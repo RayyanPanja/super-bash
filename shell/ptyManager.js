@@ -3,13 +3,49 @@ const os = require('os');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { execSync } = require('child_process');
 
 /** Returns the default shell path for the current platform. */
 function getDefaultShell() {
-  if (process.platform === 'win32') {
-    return 'C:/Program Files/Git/bin/bash.exe';
+  if (process.platform !== 'win32') {
+    return process.env.SHELL || '/bin/bash';
   }
-  return process.env.SHELL || '/bin/bash';
+
+  // 1. Check Windows registry — Git for Windows sets this on install
+  try {
+    const out = execSync(
+      'reg query "HKLM\\SOFTWARE\\GitForWindows" /v InstallPath',
+      { encoding: 'utf8', windowsHide: true, timeout: 3000 }
+    );
+    const m = out.match(/InstallPath\s+REG_SZ\s+(.+)/);
+    if (m) {
+      const bash = path.join(m[1].trim(), 'bin', 'bash.exe');
+      if (fs.existsSync(bash)) return bash.replace(/\\/g, '/');
+    }
+  } catch { /* registry key absent or reg.exe not found */ }
+
+  // 2. Walk common install locations (covers non-default drives / 32-bit installs)
+  const roots = [
+    process.env.ProgramFiles,
+    process.env['ProgramFiles(x86)'],
+    'C:\\Program Files',
+    'C:\\Program Files (x86)',
+  ].filter(Boolean);
+
+  for (const root of roots) {
+    const bash = path.join(root, 'Git', 'bin', 'bash.exe');
+    if (fs.existsSync(bash)) return bash.replace(/\\/g, '/');
+  }
+
+  // 3. Ask PATH — works for Scoop / Chocolatey / custom installs
+  try {
+    const which = execSync('where bash.exe', { encoding: 'utf8', windowsHide: true, timeout: 3000 });
+    const found = which.trim().split('\n')[0].trim();
+    if (found && fs.existsSync(found)) return found.replace(/\\/g, '/');
+  } catch { /* bash not on PATH */ }
+
+  // 4. Hard fallback — at least gives a clear error in the PTY if missing
+  return 'C:/Program Files/Git/bin/bash.exe';
 }
 
 const SAFE_ALIAS_KEY = /^[a-zA-Z_][a-zA-Z0-9_.:-]*$/;

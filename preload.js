@@ -55,6 +55,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener(channel, handler);
   },
 
+  // ── Team snippets ──────────────────────────────────────────────────────────
+  /** Load snippets from a team-snippets.json file — returns snippet[]. */
+  loadTeamSnippets:  (filePath) => ipcRenderer.invoke('snippets:load-team', filePath),
+  /** git pull then reload — returns { ok, snippets, error? }. */
+  syncTeamSnippets:  (filePath) => ipcRenderer.invoke('snippets:sync', filePath),
+
   // ── Per-project profile ────────────────────────────────────────────────────
   /** Read .superbash from dirPath — returns parsed object or null if absent. */
   checkProfile: (dirPath) => ipcRenderer.invoke('profile:check', dirPath),

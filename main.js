@@ -58,6 +58,45 @@ app.on('activate', () => {
 
 ipcMain.handle('config:load', () => ConfigLoader.load());
 
+// ── IPC: Team snippets ────────────────────────────────────────────────────────
+
+/** Expand a leading ~ to the user's home directory. */
+function expandHome(p) {
+  if (!p) return p;
+  return p.startsWith('~') ? path.join(os.homedir(), p.slice(1)) : p;
+}
+
+/** Read and parse teamSnippetsRepo file; returns [] on any error. */
+function readTeamSnippets(filePath) {
+  try {
+    const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    return Array.isArray(data.snippets) ? data.snippets : [];
+  } catch {
+    return [];
+  }
+}
+
+ipcMain.handle('snippets:load-team', (_event, rawPath) => {
+  return readTeamSnippets(expandHome(rawPath));
+});
+
+ipcMain.handle('snippets:sync', async (_event, rawPath) => {
+  const filePath = expandHome(rawPath);
+  const dir = path.dirname(filePath);
+
+  const pullResult = await new Promise((resolve) => {
+    exec('git pull', { cwd: dir, timeout: 30000, windowsHide: true },
+      (err, stdout, stderr) => resolve({ err, stdout, stderr })
+    );
+  });
+
+  if (pullResult.err) {
+    return { ok: false, error: pullResult.stderr || pullResult.err.message, snippets: [] };
+  }
+
+  return { ok: true, snippets: readTeamSnippets(filePath) };
+});
+
 // ── Shared helper: Git Bash → native path ────────────────────────────────────
 // Git Bash on Windows reports $PWD as /c/Users/… — Node's fs/exec need C:\Users\…
 

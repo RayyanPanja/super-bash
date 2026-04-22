@@ -433,6 +433,12 @@ html, body {
   border: 1px solid #2a2a2a;
 }
 
+.badge-team {
+  background: rgba(97, 175, 239, 0.12);
+  color: #61afef;
+  border: 1px solid rgba(97, 175, 239, 0.22);
+}
+
 /* Entry name and command preview */
 .palette-name {
   font-size: 12px;
@@ -603,4 +609,17 @@ html, body {
 
 .broadcast-banner.hidden {
   display: none;
+}
+
+/* ── Sync snippets button ────────────────────────────────────────────────── */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+#btn-sync-snippets.syncing {
+  color: var(--accent);
+  display: inline-block; /* needed for transform */
+  animation: spin 0.8s linear infinite;
+  pointer-events: none;
 }

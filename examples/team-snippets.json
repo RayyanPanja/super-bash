@@ -1,0 +1,28 @@
+{
+  "snippets": [
+    {
+      "name": "Deploy staging",
+      "command": "git push staging main"
+    },
+    {
+      "name": "Clear Laravel cache",
+      "command": "php artisan cache:clear && php artisan config:clear && php artisan route:clear"
+    },
+    {
+      "name": "Run migrations (force)",
+      "command": "php artisan migrate --force"
+    },
+    {
+      "name": "Docker restart",
+      "command": "docker-compose down && docker-compose up -d"
+    },
+    {
+      "name": "Tail Laravel log",
+      "command": "tail -f storage/logs/laravel.log"
+    },
+    {
+      "name": "NPM clean install",
+      "command": "rm -rf node_modules package-lock.json && npm install"
+    }
+  ]
+}

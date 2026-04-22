@@ -48,6 +48,8 @@ const state = {
   config: null,
   broadcast:    false,
   opacityIndex: 0,
+  /** @type {Array<{name:string,command:string}>} */
+  teamSnippets: [],
 };
 
 const OPACITY_LEVELS = [1.0, 0.85, 0.70];
@@ -212,6 +214,14 @@ async function init() {
   );
   document.getElementById('btn-new-tab').addEventListener('click', () => createTab());
   document.getElementById('btn-broadcast').addEventListener('click', toggleBroadcast);
+
+  const syncBtn = document.getElementById('btn-sync-snippets');
+  if (state.config.teamSnippetsRepo) {
+    syncBtn.addEventListener('click', syncTeamSnippets);
+    state.teamSnippets = await window.electronAPI.loadTeamSnippets(state.config.teamSnippetsRepo);
+  } else {
+    syncBtn.style.display = 'none';
+  }
 
   initPalette();
   initGitBar();
@@ -883,6 +893,13 @@ function buildPaletteEntries() {
     }
   }
 
+  // Team snippets
+  for (const s of (state.teamSnippets || [])) {
+    if (s && s.name && s.command) {
+      entries.push({ type: 'team', name: s.name, command: s.command, searchText: `${s.name} ${s.command}` });
+    }
+  }
+
   // History — most-recent first
   const hist = palette.history || [];
   for (let i = hist.length - 1; i >= Math.max(0, hist.length - 50); i--) {
@@ -917,8 +934,8 @@ function filterPaletteEntries(query) {
     .slice(0, 50);
 }
 
-const BADGE_LABEL = { alias: 'alias', snippet: 'snip', history: 'hist' };
-const BADGE_CLASS = { alias: 'badge-alias', snippet: 'badge-snippet', history: 'badge-history' };
+const BADGE_LABEL = { alias: 'alias', snippet: 'snip', history: 'hist', team: 'team' };
+const BADGE_CLASS = { alias: 'badge-alias', snippet: 'badge-snippet', history: 'badge-history', team: 'badge-team' };
 
 function paletteEscHtml(str) {
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -998,6 +1015,21 @@ async function executeAndClose(entry) {
         await new Promise(resolve => setTimeout(resolve, 120));
       }
     }
+  }
+}
+
+// ── Team snippet sync ─────────────────────────────────────────────────────────
+
+async function syncTeamSnippets() {
+  const btn = document.getElementById('btn-sync-snippets');
+  btn.classList.add('syncing');
+  try {
+    const result = await window.electronAPI.syncTeamSnippets(state.config.teamSnippetsRepo);
+    if (result.ok) {
+      state.teamSnippets = result.snippets;
+    }
+  } finally {
+    btn.classList.remove('syncing');
   }
 }
 

@@ -201,4 +201,5 @@ ipcMain.on('window:maximize', () => {
   if (mainWindow.isMaximized()) mainWindow.unmaximize();
   else mainWindow.maximize();
 });
-ipcMain.on('window:close', () => mainWindow.close());
+ipcMain.on('window:close',   () => mainWindow.close());
+ipcMain.on('window:opacity', (_event, opacity) => mainWindow.setOpacity(opacity));

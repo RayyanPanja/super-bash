@@ -46,7 +46,11 @@ const state = {
   fontSize: 14,
   /** @type {object|null} */
   config: null,
+  broadcast:    false,
+  opacityIndex: 0,
 };
+
+const OPACITY_LEVELS = [1.0, 0.85, 0.70];
 
 // ── xterm theme (matches styles.css) ────────────────────────────────────────
 
@@ -207,6 +211,7 @@ async function init() {
     window.electronAPI.closeWindow()
   );
   document.getElementById('btn-new-tab').addEventListener('click', () => createTab());
+  document.getElementById('btn-broadcast').addEventListener('click', toggleBroadcast);
 
   initPalette();
   initGitBar();
@@ -287,11 +292,13 @@ function buildTabDOM(tabId) {
   const content = document.createElement('div');
   content.id = elId.tabContent(tabId);
   content.className = 'tab-content';
+  const bc = state.broadcast ? 'broadcast-banner' : 'broadcast-banner hidden';
   content.innerHTML = `
     <div class="terminal-pane active" id="${elId.pane(tabId, 'left')}">
       <div class="pane-titlebar">
         <span class="pane-cwd" id="${elId.cwd(tabId, 'left')}">~</span>
       </div>
+      <div class="${bc}">&#x229B; BROADCAST ON</div>
       <div class="terminal-wrapper" id="${elId.terminal(tabId, 'left')}"></div>
     </div>
     <div id="${elId.divider(tabId)}" class="pane-divider hidden"></div>
@@ -299,6 +306,7 @@ function buildTabDOM(tabId) {
       <div class="pane-titlebar">
         <span class="pane-cwd" id="${elId.cwd(tabId, 'right')}">~</span>
       </div>
+      <div class="${bc}">&#x229B; BROADCAST ON</div>
       <div class="terminal-wrapper" id="${elId.terminal(tabId, 'right')}"></div>
     </div>
   `;
@@ -421,7 +429,10 @@ async function createPane(tabId, side) {
     aliases:   state.config.aliases || {},
   });
 
-  term.onData((data) => window.electronAPI.writeToShell(sessionId, data));
+  term.onData((data) => {
+    window.electronAPI.writeToShell(sessionId, data);
+    if (state.broadcast) broadcastToOthers(sessionId, data);
+  });
 
   const unsubData = window.electronAPI.onShellData(sessionId, (data) => term.write(data));
   const unsubExit = window.electronAPI.onShellExit(sessionId, () => {
@@ -713,6 +724,52 @@ function handleGlobalKeydown(e) {
     adjustFontSize(-1);
     return;
   }
+
+  // Ctrl+Shift+B — toggle broadcast mode
+  if (ctrlKey && shiftKey && key === 'B') {
+    e.preventDefault(); e.stopPropagation();
+    toggleBroadcast();
+    return;
+  }
+
+  // Ctrl+Shift+O — cycle window opacity
+  if (ctrlKey && shiftKey && key === 'O') {
+    e.preventDefault(); e.stopPropagation();
+    cycleOpacity();
+    return;
+  }
+}
+
+// ── Broadcast mode ────────────────────────────────────────────────────────────
+
+function broadcastToOthers(excludeSessionId, data) {
+  for (const tab of state.tabs) {
+    for (const pane of Object.values(tab.panes)) {
+      if (pane && pane.sessionId !== excludeSessionId) {
+        window.electronAPI.writeToShell(pane.sessionId, data);
+      }
+    }
+  }
+}
+
+function toggleBroadcast() {
+  state.broadcast = !state.broadcast;
+  setBroadcastUI();
+  fitAll(); // banner appears/disappears, so terminal height changes
+}
+
+function setBroadcastUI() {
+  document.getElementById('btn-broadcast').classList.toggle('active', state.broadcast);
+  document.querySelectorAll('.broadcast-banner').forEach(el => {
+    el.classList.toggle('hidden', !state.broadcast);
+  });
+}
+
+// ── Window opacity ────────────────────────────────────────────────────────────
+
+function cycleOpacity() {
+  state.opacityIndex = (state.opacityIndex + 1) % OPACITY_LEVELS.length;
+  window.electronAPI.setOpacity(OPACITY_LEVELS[state.opacityIndex]);
 }
 
 function adjustFontSize(delta) {

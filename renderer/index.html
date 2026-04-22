@@ -44,6 +44,30 @@
     <!-- Per-tab split-pane containers injected by terminal.js -->
   </div>
 
+  <!-- ── Command palette ───────────────────────────────────────────── -->
+  <div id="palette-overlay" class="hidden">
+    <div id="palette-modal">
+      <div id="palette-search-row">
+        <span id="palette-prompt">&gt;</span>
+        <input
+          id="palette-input"
+          type="text"
+          placeholder="Search aliases, snippets, history…"
+          autocomplete="off"
+          spellcheck="false"
+        />
+      </div>
+      <div id="palette-list">
+        <!-- Items rendered by terminal.js -->
+      </div>
+      <div id="palette-footer">
+        <span class="palette-hint">&#x2191;&#x2193;&nbsp;navigate</span>
+        <span class="palette-hint">&#x23CE;&nbsp;run</span>
+        <span class="palette-hint">Esc&nbsp;close</span>
+      </div>
+    </div>
+  </div>
+
   <!-- xterm.js UMD scripts — order matters: core first, then addons -->
   <script src="../node_modules/xterm/lib/xterm.js"></script>
   <script src="../node_modules/xterm-addon-fit/lib/xterm-addon-fit.js"></script>

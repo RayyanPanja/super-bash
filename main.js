@@ -79,6 +79,30 @@ ipcMain.handle('session:save', (_event, data) => {
   }
 });
 
+// ── IPC: Shell history ────────────────────────────────────────────────────────
+
+ipcMain.handle('history:load', () => {
+  const histPath = path.join(os.homedir(), '.bash_history');
+  try {
+    const lines = fs.readFileSync(histPath, 'utf8')
+      .split('\n')
+      .map(l => l.trim())
+      .filter(l => l && !l.startsWith('#')); // strip blank lines and HISTTIMEFORMAT stamps
+    // Deduplicate keeping the most-recent occurrence of each command
+    const seen = new Set();
+    const unique = [];
+    for (let i = lines.length - 1; i >= 0; i--) {
+      if (!seen.has(lines[i])) {
+        seen.add(lines[i]);
+        unique.push(lines[i]);
+      }
+    }
+    return unique.slice(0, 50).reverse(); // oldest → newest order
+  } catch {
+    return [];
+  }
+});
+
 // ── IPC: Shell / PTY ─────────────────────────────────────────────────────────
 
 ipcMain.handle('shell:create', (event, opts = {}) => {

@@ -83,6 +83,8 @@ async function init() {
   );
   document.getElementById('btn-new-tab').addEventListener('click', () => createTab());
 
+  initPalette();
+
   // Capture phase so our shortcuts are handled before xterm sees the keystroke
   document.addEventListener('keydown', handleGlobalKeydown, { capture: true });
 
@@ -468,7 +470,27 @@ function initDividerDrag(tabId) {
 
 function handleGlobalKeydown(e) {
   const { ctrlKey, shiftKey, key } = e;
+
+  // ── Palette is open: only Escape and text-editing ctrl shortcuts pass through ─
+  if (palette.isOpen) {
+    if (key === 'Escape') {
+      e.preventDefault(); e.stopPropagation();
+      closePalette();
+    } else if (ctrlKey && !['a', 'c', 'v', 'x', 'z'].includes(key.toLowerCase())) {
+      // Block all terminal shortcuts while the palette input is active
+      e.preventDefault(); e.stopPropagation();
+    }
+    return;
+  }
+
   const activeTab = state.tabs.find(t => t.id === state.activeTabId);
+
+  // Ctrl+P — open command palette
+  if (ctrlKey && !shiftKey && key === 'p') {
+    e.preventDefault(); e.stopPropagation();
+    openPalette();
+    return;
+  }
 
   // Ctrl+T — new tab
   if (ctrlKey && !shiftKey && key === 't') {
@@ -568,6 +590,224 @@ function adjustFontSize(delta) {
     }
   }
   fitAll();
+}
+
+// ── Command palette ───────────────────────────────────────────────────────────
+
+/**
+ * @typedef {{ type: 'alias'|'snippet'|'history', name: string,
+ *             command: string, searchText: string }} PaletteEntry
+ */
+
+const palette = {
+  isOpen:      false,
+  /** @type {PaletteEntry[]} */
+  allEntries:  [],
+  /** @type {PaletteEntry[]} */
+  filtered:    [],
+  selectedIdx: 0,
+  /** @type {string[]|null} null = not yet loaded */
+  history:     null,
+};
+
+function initPalette() {
+  const overlay = document.getElementById('palette-overlay');
+  const input   = document.getElementById('palette-input');
+
+  // Click on dim backdrop → close
+  overlay.addEventListener('mousedown', (e) => {
+    if (e.target === overlay) closePalette();
+  });
+
+  input.addEventListener('input', () => {
+    palette.selectedIdx = 0;
+    palette.filtered = filterPaletteEntries(input.value.trim());
+    renderPaletteList();
+  });
+
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      movePaletteSelection(+1);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      movePaletteSelection(-1);
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      const entry = palette.filtered[palette.selectedIdx];
+      if (entry) executeAndClose(entry);
+    }
+  });
+}
+
+async function openPalette() {
+  // Load history from ~/.bash_history on first open (cached for the session)
+  if (palette.history === null) {
+    palette.history = (await window.electronAPI.loadHistory()) || [];
+  }
+
+  palette.isOpen      = true;
+  palette.selectedIdx = 0;
+  palette.allEntries  = buildPaletteEntries();
+  palette.filtered    = palette.allEntries.slice(0, 50);
+
+  const overlay = document.getElementById('palette-overlay');
+  const input   = document.getElementById('palette-input');
+  overlay.classList.remove('hidden');
+  input.value = '';
+  renderPaletteList();
+  requestAnimationFrame(() => input.focus());
+}
+
+function closePalette() {
+  palette.isOpen = false;
+  document.getElementById('palette-overlay').classList.add('hidden');
+  // Return focus to the active terminal
+  const tab = state.tabs.find(t => t.id === state.activeTabId);
+  if (tab) {
+    const pane = tab.panes[tab.activePaneId];
+    if (pane) pane.term.focus();
+  }
+}
+
+function buildPaletteEntries() {
+  /** @type {PaletteEntry[]} */
+  const entries = [];
+
+  // Aliases
+  for (const [name, command] of Object.entries(state.config?.aliases || {})) {
+    entries.push({ type: 'alias', name, command, searchText: `${name} ${command}` });
+  }
+
+  // Snippets (personal overrides team via deepMerge → arrays replace, so personal
+  // snippets win; both are shown if only one config has snippets)
+  for (const s of (state.config?.snippets || [])) {
+    if (s && s.name && s.command) {
+      entries.push({
+        type:       'snippet',
+        name:       s.name,
+        command:    s.command,
+        searchText: `${s.name} ${s.command}`,
+      });
+    }
+  }
+
+  // History — most-recent first
+  const hist = palette.history || [];
+  for (let i = hist.length - 1; i >= Math.max(0, hist.length - 50); i--) {
+    entries.push({ type: 'history', name: hist[i], command: hist[i], searchText: hist[i] });
+  }
+
+  return entries;
+}
+
+function fuzzyScore(query, text) {
+  if (!query) return 1;
+  const q = query.toLowerCase();
+  const t = text.toLowerCase();
+  if (t === q) return 4;
+  if (t.startsWith(q)) return 3;
+  if (t.includes(q)) return 2;
+  // Check for subsequence match
+  let qi = 0;
+  for (let i = 0; i < t.length && qi < q.length; i++) {
+    if (t[i] === q[qi]) qi++;
+  }
+  return qi === q.length ? 1 : 0;
+}
+
+function filterPaletteEntries(query) {
+  if (!query) return palette.allEntries.slice(0, 50);
+  return palette.allEntries
+    .map(e => ({ e, score: fuzzyScore(query, e.searchText) }))
+    .filter(x => x.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .map(x => x.e)
+    .slice(0, 50);
+}
+
+const BADGE_LABEL = { alias: 'alias', snippet: 'snip', history: 'hist' };
+const BADGE_CLASS = { alias: 'badge-alias', snippet: 'badge-snippet', history: 'badge-history' };
+
+function paletteEscHtml(str) {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function paletteCmdPreview(command) {
+  const lines = command.split('\n').filter(l => l.trim());
+  if (lines.length === 0) return '';
+  const first = lines[0].length > 58 ? lines[0].slice(0, 57) + '…' : lines[0];
+  return lines.length > 1 ? `${first} <span style="color:#444">+${lines.length - 1} more</span>` : first;
+}
+
+function renderPaletteList() {
+  const list = document.getElementById('palette-list');
+  list.innerHTML = '';
+
+  if (palette.filtered.length === 0) {
+    list.innerHTML = '<div class="palette-empty">No matches</div>';
+    return;
+  }
+
+  palette.filtered.forEach((entry, idx) => {
+    const item = document.createElement('div');
+    item.className = 'palette-item' + (idx === palette.selectedIdx ? ' selected' : '');
+    item.dataset.idx = String(idx);
+
+    const showCmd = entry.type !== 'history' && entry.command !== entry.name;
+    item.innerHTML =
+      `<span class="palette-badge ${BADGE_CLASS[entry.type]}">${BADGE_LABEL[entry.type]}</span>` +
+      `<span class="palette-name">${paletteEscHtml(entry.name)}</span>` +
+      (showCmd ? `<span class="palette-cmd">${paletteCmdPreview(entry.command)}</span>` : '');
+
+    // Hover tracks keyboard selection so Enter always runs what's highlighted
+    item.addEventListener('mouseenter', () => {
+      list.querySelector('.palette-item.selected')?.classList.remove('selected');
+      item.classList.add('selected');
+      palette.selectedIdx = idx;
+    });
+
+    // mousedown (not click) so we act before the input loses focus
+    item.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      executeAndClose(entry);
+    });
+
+    list.appendChild(item);
+  });
+}
+
+function movePaletteSelection(delta) {
+  const list = document.getElementById('palette-list');
+  if (!list || palette.filtered.length === 0) return;
+  const newIdx = Math.max(0, Math.min(palette.selectedIdx + delta, palette.filtered.length - 1));
+  if (newIdx === palette.selectedIdx) return;
+  list.querySelector('.palette-item.selected')?.classList.remove('selected');
+  palette.selectedIdx = newIdx;
+  const next = list.querySelector(`.palette-item[data-idx="${newIdx}"]`);
+  next?.classList.add('selected');
+  next?.scrollIntoView({ block: 'nearest' });
+}
+
+async function executeAndClose(entry) {
+  closePalette();
+
+  const tab = state.tabs.find(t => t.id === state.activeTabId);
+  if (!tab) return;
+  const pane = tab.panes[tab.activePaneId];
+  if (!pane) return;
+
+  const lines = entry.command.split('\n').filter(l => l.trim() !== '');
+  if (lines.length <= 1) {
+    window.electronAPI.writeToShell(pane.sessionId, (lines[0] ?? entry.command) + '\n');
+  } else {
+    for (let i = 0; i < lines.length; i++) {
+      window.electronAPI.writeToShell(pane.sessionId, lines[i] + '\n');
+      if (i < lines.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 120));
+      }
+    }
+  }
 }
 
 // ── Bootstrap ─────────────────────────────────────────────────────────────────

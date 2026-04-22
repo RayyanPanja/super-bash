@@ -61,6 +61,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   /** Persist session state to ~/.superbash/session.json. */
   saveSession: (data) => ipcRenderer.invoke('session:save', data),
 
+  // ── Shell history ──────────────────────────────────────────────────────────
+  /** Read last 50 unique commands from ~/.bash_history — returns string[]. */
+  loadHistory: () => ipcRenderer.invoke('history:load'),
+
   // ── Window Controls ────────────────────────────────────────────────────────
   minimizeWindow: () => ipcRenderer.send('window:minimize'),
   maximizeWindow: () => ipcRenderer.send('window:maximize'),

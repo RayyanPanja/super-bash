@@ -14,5 +14,11 @@
   "env": {
     "SUPER_BASH": "1",
     "FORCE_COLOR": "1"
-  }
+  },
+  "snippets": [
+    { "name": "Fresh migrate",   "command": "php artisan migrate:fresh --seed" },
+    { "name": "Dev server",      "command": "npm run dev" },
+    { "name": "Git log graph",   "command": "git log --oneline --graph --decorate -20" },
+    { "name": "Docker compose up","command": "docker compose up --build -d" }
+  ]
 }

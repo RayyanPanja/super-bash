@@ -15,5 +15,9 @@
   "env": {
     "EDITOR": "vim"
   },
-  "restoreSession": true
+  "restoreSession": true,
+  "snippets": [
+    { "name": "Update all packages", "command": "npm outdated && npm update" },
+    { "name": "Multi-step deploy",   "command": "npm run build\nnpm run test\ngit push origin main" }
+  ]
 }

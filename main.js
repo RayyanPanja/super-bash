@@ -7,13 +7,14 @@
  *   - Handle IPC messages from the renderer (config, shell ops, window controls)
  */
 
-const { app, BrowserWindow, ipcMain, screen } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, globalShortcut } = require('electron');
 const path   = require('path');
 const os     = require('os');
 const fs     = require('fs');
 const { exec } = require('child_process');
-const PtyManager = require('./shell/ptyManager');
+const PtyManager   = require('./shell/ptyManager');
 const ConfigLoader = require('./config/configLoader');
+const { autoUpdater } = require('electron-updater');
 
 let mainWindow;
 const ptyManager = new PtyManager();
@@ -43,7 +44,38 @@ function createWindow() {
 
 // ── App lifecycle ────────────────────────────────────────────────────────────
 
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+  createWindow();
+
+  // Auto-update — only active in packaged builds, not during `npm start`
+  if (app.isPackaged) {
+    autoUpdater.checkForUpdatesAndNotify();
+    autoUpdater.on('update-available', () => {
+      mainWindow?.webContents.send('updater:status', 'update-available');
+    });
+    autoUpdater.on('update-downloaded', () => {
+      mainWindow?.webContents.send('updater:status', 'update-downloaded');
+    });
+    autoUpdater.on('error', (err) => {
+      console.error('auto-update error', err.message);
+    });
+  }
+
+  // Ctrl+` toggles the window — works system-wide even when the app is hidden
+  globalShortcut.register('CommandOrControl+`', () => {
+    if (!mainWindow) return;
+    if (mainWindow.isVisible() && mainWindow.isFocused()) {
+      mainWindow.hide();
+    } else {
+      mainWindow.show();
+      mainWindow.focus();
+    }
+  });
+});
+
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll();
+});
 
 app.on('window-all-closed', () => {
   ptyManager.destroyAll();

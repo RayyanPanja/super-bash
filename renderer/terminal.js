@@ -22,11 +22,13 @@ function cwdLabel(fullPath) {
 
 // Stable element ID helpers so tab-scoped IDs are never mis-typed
 const elId = {
-  tabContent: (t)    => `tab-content-${t}`,
-  pane:       (t, s) => `pane-${s}-${t}`,
-  terminal:   (t, s) => `terminal-${s}-${t}`,
-  cwd:        (t, s) => `cwd-${s}-${t}`,
-  divider:    (t)    => `divider-${t}`,
+  tabContent:  (t)    => `tab-content-${t}`,
+  pane:        (t, s) => `pane-${s}-${t}`,
+  terminal:    (t, s) => `terminal-${s}-${t}`,
+  cwd:         (t, s) => `cwd-${s}-${t}`,
+  divider:     (t)    => `divider-${t}`,
+  searchBar:   (t, s) => `search-bar-${s}-${t}`,
+  searchInput: (t, s) => `search-input-${s}-${t}`,
 };
 
 // ── Application state ─────────────────────────────────────────────────────────
@@ -202,6 +204,9 @@ function updateGitBar(status) {
 async function init() {
   state.config = await window.electronAPI.loadConfig();
   state.fontSize = state.config.fontSize || 14;
+  if (state.config.fontFamily) {
+    document.documentElement.style.setProperty('--font-family', state.config.fontFamily);
+  }
 
   document.getElementById('btn-minimize').addEventListener('click', () =>
     window.electronAPI.minimizeWindow()
@@ -225,6 +230,16 @@ async function init() {
 
   initPalette();
   initGitBar();
+  initContextMenu();
+  initTabDrag();
+
+  window.electronAPI.onUpdaterStatus((status) => {
+    if (status === 'update-available') {
+      showToast('Update available — downloading in background…', 'info');
+    } else if (status === 'update-downloaded') {
+      showToast('Update downloaded — restart to apply.', 'success', 8000);
+    }
+  });
 
   // Capture phase so our shortcuts are handled before xterm sees the keystroke
   document.addEventListener('keydown', handleGlobalKeydown, { capture: true });
@@ -250,6 +265,7 @@ async function saveSession() {
       isSplit:    tab.isSplit,
       rightCwd:   tab.panes.right?.cwd || null,
       activePane: tab.activePaneId,
+      customName: tab.customName || null,
     })),
   };
   await window.electronAPI.saveSession(data);
@@ -263,6 +279,10 @@ async function tryRestoreSession() {
 
   for (const saved of session.tabs) {
     const tabId = await createTab(saved.cwd || null);
+    if (saved.customName) {
+      const tab = state.tabs.find(t => t.id === tabId);
+      if (tab) { tab.customName = saved.customName; updateTabLabel(tabId); }
+    }
     if (saved.isSplit) {
       await openSplit(tabId);
       if (saved.rightCwd) {
@@ -288,7 +308,9 @@ function buildTabDOM(tabId) {
   const btn = document.createElement('button');
   btn.className = 'tab';
   btn.dataset.tabId = tabId;
+  btn.draggable = true;
   btn.innerHTML =
+    `<span class="tab-activity-dot" title="New output"></span>` +
     `<span class="tab-cwd">~</span>` +
     `<span class="tab-close" title="Close tab (Ctrl+W)">&#x2715;</span>`;
   btn.querySelector('.tab-close').addEventListener('click', (e) => {
@@ -296,6 +318,12 @@ function buildTabDOM(tabId) {
     closeTab(tabId);
   });
   btn.addEventListener('click', () => switchTab(tabId));
+
+  btn.querySelector('.tab-cwd').addEventListener('dblclick', (e) => {
+    e.stopPropagation();
+    startTabRename(tabId, btn);
+  });
+
   document.getElementById('tabs-list').appendChild(btn);
 
   // Tab content: left pane + divider + right pane
@@ -303,12 +331,21 @@ function buildTabDOM(tabId) {
   content.id = elId.tabContent(tabId);
   content.className = 'tab-content';
   const bc = state.broadcast ? 'broadcast-banner' : 'broadcast-banner hidden';
+  const searchBar = (side) => `
+    <div class="pane-search-bar hidden" id="${elId.searchBar(tabId, side)}">
+      <input class="pane-search-input" id="${elId.searchInput(tabId, side)}"
+        type="text" placeholder="Search…" autocomplete="off" spellcheck="false" />
+      <button class="search-btn" data-dir="prev" title="Previous (Shift+Enter)">&#x2191;</button>
+      <button class="search-btn" data-dir="next" title="Next (Enter)">&#x2193;</button>
+      <button class="search-btn search-close-btn" data-dir="close" title="Close (Esc)">&#x2715;</button>
+    </div>`;
   content.innerHTML = `
     <div class="terminal-pane active" id="${elId.pane(tabId, 'left')}">
       <div class="pane-titlebar">
         <span class="pane-cwd" id="${elId.cwd(tabId, 'left')}">~</span>
       </div>
       <div class="${bc}">&#x229B; BROADCAST ON</div>
+      ${searchBar('left')}
       <div class="terminal-wrapper" id="${elId.terminal(tabId, 'left')}"></div>
     </div>
     <div id="${elId.divider(tabId)}" class="pane-divider hidden"></div>
@@ -317,6 +354,7 @@ function buildTabDOM(tabId) {
         <span class="pane-cwd" id="${elId.cwd(tabId, 'right')}">~</span>
       </div>
       <div class="${bc}">&#x229B; BROADCAST ON</div>
+      ${searchBar('right')}
       <div class="terminal-wrapper" id="${elId.terminal(tabId, 'right')}"></div>
     </div>
   `;
@@ -381,7 +419,10 @@ async function switchTab(tabId) {
   if (content) content.classList.add('tab-active');
 
   const btn = document.querySelector(`.tab[data-tab-id="${tabId}"]`);
-  if (btn) btn.classList.add('active');
+  if (btn) {
+    btn.classList.add('active');
+    btn.classList.remove('has-activity');
+  }
 
   state.activeTabId = tabId;
 
@@ -403,11 +444,13 @@ async function createPane(tabId, side) {
   const container = document.getElementById(elId.terminal(tabId, side));
 
   const term = new Terminal({
-    fontFamily: '"JetBrains Mono", "Courier New", monospace',
+    fontFamily: state.config.fontFamily,
     fontSize: state.fontSize,
     theme: XTERM_THEME,
     scrollback: 5000,
     cursorBlink: true,
+    copyOnSelect: true,
+    bellStyle: 'visual',
     allowTransparency: false,
     allowProposedApi: true,
   });
@@ -421,6 +464,17 @@ async function createPane(tabId, side) {
   term.loadAddon(searchAddon);
 
   term.open(container);
+
+  // WebGL renderer — enables font ligatures (=>  !=  ->  ===).
+  // Wrapped in try/catch: falls back to the default canvas renderer silently.
+  if (typeof WebglAddon !== 'undefined') {
+    try {
+      const webgl = new WebglAddon.WebglAddon();
+      webgl.onContextLoss(() => webgl.dispose());
+      term.loadAddon(webgl);
+    } catch { /* WebGL unavailable — continue with canvas renderer */ }
+  }
+
   fitAddon.fit();
 
   // Inject PROMPT_COMMAND to track CWD via OSC 0 title changes.
@@ -444,7 +498,13 @@ async function createPane(tabId, side) {
     if (state.broadcast) broadcastToOthers(sessionId, data);
   });
 
-  const unsubData = window.electronAPI.onShellData(sessionId, (data) => term.write(data));
+  const unsubData = window.electronAPI.onShellData(sessionId, (data) => {
+    term.write(data);
+    if (state.activeTabId !== tabId) {
+      const tabBtn = document.querySelector(`.tab[data-tab-id="${tabId}"]`);
+      if (tabBtn) tabBtn.classList.add('has-activity');
+    }
+  });
   const unsubExit = window.electronAPI.onShellExit(sessionId, () => {
     term.write('\r\n\x1b[33m[Process exited — press any key to close pane]\x1b[0m\r\n');
   });
@@ -456,10 +516,43 @@ async function createPane(tabId, side) {
   // Build pane state before registering the title-change handler so the
   // closure can write back into the same object.
   const pane = {
-    term, fitAddon, sessionId, unsubData, unsubExit, cwd: '~',
+    term, fitAddon, searchAddon, sessionId, unsubData, unsubExit, cwd: '~',
     projectProfile: null, projectProfileDir: null, _lastCheckedCwd: null,
   };
   tab.panes[side] = pane;
+
+  // ── Wire search bar ────────────────────────────────────────────────────────
+  const searchBarEl   = document.getElementById(elId.searchBar(tabId, side));
+  const searchInputEl = document.getElementById(elId.searchInput(tabId, side));
+
+  searchInputEl.addEventListener('input', () => {
+    if (searchInputEl.value) {
+      pane.searchAddon.findNext(searchInputEl.value, { incremental: true });
+    } else {
+      pane.term.clearSelection();
+    }
+  });
+
+  searchInputEl.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter') {
+      ev.preventDefault();
+      if (ev.shiftKey) pane.searchAddon.findPrevious(searchInputEl.value);
+      else             pane.searchAddon.findNext(searchInputEl.value);
+    } else if (ev.key === 'Escape') {
+      ev.preventDefault();
+      closeSearch(tabId, side);
+    }
+  });
+
+  searchBarEl.querySelectorAll('.search-btn').forEach(btn => {
+    btn.addEventListener('mousedown', (ev) => {
+      ev.preventDefault(); // keep focus on the input
+      const dir = btn.dataset.dir;
+      if (dir === 'next')  pane.searchAddon.findNext(searchInputEl.value);
+      if (dir === 'prev')  pane.searchAddon.findPrevious(searchInputEl.value);
+      if (dir === 'close') closeSearch(tabId, side);
+    });
+  });
 
   term.onTitleChange((title) => {
     if (!title) return;
@@ -473,9 +566,20 @@ async function createPane(tabId, side) {
     checkProjectProfile(pane, title);
   });
 
+  term.onBell(() => {
+    const tabBtn = document.querySelector(`.tab[data-tab-id="${tabId}"]`);
+    if (!tabBtn) return;
+    tabBtn.classList.remove('bell-flash');
+    // Force reflow so re-adding the class re-triggers the animation
+    void tabBtn.offsetWidth;
+    tabBtn.classList.add('bell-flash');
+  });
+
   container.addEventListener('mousedown', () => {
     if (state.activeTabId === tabId) setActivePaneFocus(tabId, side);
   });
+
+  container.addEventListener('contextmenu', (e) => openContextMenu(e, pane));
 }
 
 // ── Pane destruction ──────────────────────────────────────────────────────────
@@ -550,9 +654,114 @@ function updateTabLabel(tabId) {
   const tab = state.tabs.find(t => t.id === tabId);
   if (!tab) return;
   const pane = tab.panes[tab.activePaneId] || tab.panes.left;
-  const label = cwdLabel(pane?.cwd || '~');
+  const label = tab.customName || cwdLabel(pane?.cwd || '~');
   const btn = document.querySelector(`.tab[data-tab-id="${tabId}"]`);
-  if (btn) btn.querySelector('.tab-cwd').textContent = label;
+  if (!btn) return;
+  const cwdEl = btn.querySelector('.tab-cwd');
+  // Don't overwrite while the user is actively editing
+  if (cwdEl && !btn.querySelector('.tab-rename-input')) cwdEl.textContent = label;
+}
+
+// ── Tab drag-to-reorder ───────────────────────────────────────────────────────
+
+function initTabDrag() {
+  const list = document.getElementById('tabs-list');
+  let dragSrcId = null;
+
+  list.addEventListener('dragstart', (e) => {
+    const tab = e.target.closest('.tab[data-tab-id]');
+    if (!tab) return;
+    dragSrcId = tab.dataset.tabId;
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', dragSrcId);
+    tab.classList.add('drag-source');
+  });
+
+  list.addEventListener('dragend', (e) => {
+    const tab = e.target.closest('.tab[data-tab-id]');
+    if (tab) tab.classList.remove('drag-source');
+    list.querySelectorAll('.tab').forEach(t => t.classList.remove('drag-over'));
+    dragSrcId = null;
+  });
+
+  list.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    const target = e.target.closest('.tab[data-tab-id]');
+    list.querySelectorAll('.tab').forEach(t => t.classList.remove('drag-over'));
+    if (target && target.dataset.tabId !== dragSrcId) target.classList.add('drag-over');
+  });
+
+  list.addEventListener('dragleave', (e) => {
+    const target = e.target.closest('.tab[data-tab-id]');
+    if (target) target.classList.remove('drag-over');
+  });
+
+  list.addEventListener('drop', (e) => {
+    e.preventDefault();
+    const target = e.target.closest('.tab[data-tab-id]');
+    if (!target || !dragSrcId || target.dataset.tabId === dragSrcId) return;
+
+    const dstId = target.dataset.tabId;
+
+    // Reorder state.tabs array
+    const srcIdx = state.tabs.findIndex(t => t.id === dragSrcId);
+    const dstIdx = state.tabs.findIndex(t => t.id === dstId);
+    if (srcIdx === -1 || dstIdx === -1) return;
+    const [moved] = state.tabs.splice(srcIdx, 1);
+    state.tabs.splice(dstIdx, 0, moved);
+
+    // Reorder DOM to match
+    const srcBtn = list.querySelector(`.tab[data-tab-id="${dragSrcId}"]`);
+    if (srcBtn) {
+      if (srcIdx < dstIdx) target.after(srcBtn);
+      else                 target.before(srcBtn);
+    }
+
+    target.classList.remove('drag-over');
+    saveSession();
+  });
+}
+
+function startTabRename(tabId, btn) {
+  const tab    = state.tabs.find(t => t.id === tabId);
+  const cwdEl  = btn.querySelector('.tab-cwd');
+  if (!tab || !cwdEl) return;
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'tab-rename-input';
+  input.draggable = false;
+  input.value = tab.customName || cwdEl.textContent;
+  input.maxLength = 40;
+
+  cwdEl.replaceWith(input);
+  input.select();
+
+  const commit = () => {
+    const name = input.value.trim();
+    tab.customName = name || null;
+    const restored = document.createElement('span');
+    restored.className = 'tab-cwd';
+    input.replaceWith(restored);
+    updateTabLabel(tabId);
+    saveSession();
+  };
+
+  const cancel = () => {
+    const restored = document.createElement('span');
+    restored.className = 'tab-cwd';
+    input.replaceWith(restored);
+    updateTabLabel(tabId);
+  };
+
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter')  { e.preventDefault(); commit(); }
+    if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+    e.stopPropagation(); // prevent global shortcuts during rename
+  });
+  input.addEventListener('blur', commit);
+  input.addEventListener('click', (e) => e.stopPropagation()); // don't trigger switchTab
 }
 
 // ── Fit ───────────────────────────────────────────────────────────────────────
@@ -626,6 +835,19 @@ function initDividerDrag(tabId) {
 function handleGlobalKeydown(e) {
   const { ctrlKey, shiftKey, key } = e;
 
+  // ── Search bar is focused: let it handle its own keys ────────────────────────
+  if (document.activeElement?.closest('.pane-search-bar')) {
+    // Ctrl+ shortcuts must not fire while typing a search query
+    if (ctrlKey) { e.preventDefault(); e.stopPropagation(); }
+    return;
+  }
+
+  // ── Context menu open: Escape closes it ──────────────────────────────────────
+  if (!document.getElementById('context-menu').classList.contains('hidden')) {
+    if (key === 'Escape') { e.preventDefault(); closeContextMenu(); }
+    return;
+  }
+
   // ── Palette is open: only Escape and text-editing ctrl shortcuts pass through ─
   if (palette.isOpen) {
     if (key === 'Escape') {
@@ -647,10 +869,10 @@ function handleGlobalKeydown(e) {
     return;
   }
 
-  // Ctrl+T — new tab
+  // Ctrl+T — new tab (inherit CWD from active pane if known)
   if (ctrlKey && !shiftKey && key === 't') {
     e.preventDefault(); e.stopPropagation();
-    createTab();
+    createTab(getActivePaneCwd());
     return;
   }
 
@@ -721,6 +943,23 @@ function handleGlobalKeydown(e) {
     return;
   }
 
+  // Ctrl+F — open in-pane search
+  if (ctrlKey && !shiftKey && key === 'f') {
+    e.preventDefault(); e.stopPropagation();
+    if (activeTab) openSearch(state.activeTabId, activeTab.activePaneId);
+    return;
+  }
+
+  // Ctrl+L — clear screen (send form-feed to PTY; bash readline handles the rest)
+  if (ctrlKey && !shiftKey && key === 'l') {
+    e.preventDefault(); e.stopPropagation();
+    if (activeTab) {
+      const pane = activeTab.panes[activeTab.activePaneId];
+      if (pane) window.electronAPI.writeToShell(pane.sessionId, '\x0c');
+    }
+    return;
+  }
+
   // Ctrl+= or Ctrl++ — increase font size
   if (ctrlKey && !shiftKey && (key === '=' || key === '+')) {
     e.preventDefault(); e.stopPropagation();
@@ -748,6 +987,53 @@ function handleGlobalKeydown(e) {
     cycleOpacity();
     return;
   }
+}
+
+// ── In-pane search ────────────────────────────────────────────────────────────
+
+function openSearch(tabId, side) {
+  const tab  = state.tabs.find(t => t.id === tabId);
+  const pane = tab?.panes[side];
+  if (!pane) return;
+
+  const barEl   = document.getElementById(elId.searchBar(tabId, side));
+  const inputEl = document.getElementById(elId.searchInput(tabId, side));
+  if (!barEl || !inputEl) return;
+
+  barEl.classList.remove('hidden');
+  inputEl.select();
+  inputEl.focus();
+
+  // Refit so the terminal shrinks to make room for the bar
+  pane.fitAddon.fit();
+  window.electronAPI.resizeShell(pane.sessionId, pane.term.cols, pane.term.rows);
+}
+
+function closeSearch(tabId, side) {
+  const tab  = state.tabs.find(t => t.id === tabId);
+  const pane = tab?.panes[side];
+  const barEl = document.getElementById(elId.searchBar(tabId, side));
+  if (!barEl || barEl.classList.contains('hidden')) return;
+
+  barEl.classList.add('hidden');
+  pane?.term.clearSelection();
+
+  // Refit to reclaim the bar's height
+  if (pane) {
+    pane.fitAddon.fit();
+    window.electronAPI.resizeShell(pane.sessionId, pane.term.cols, pane.term.rows);
+    pane.term.focus();
+  }
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+/** Returns the active pane's cwd, or null if it hasn't reported one yet. */
+function getActivePaneCwd() {
+  const tab  = state.tabs.find(t => t.id === state.activeTabId);
+  const pane = tab?.panes[tab.activePaneId] || tab?.panes.left;
+  const cwd  = pane?.cwd;
+  return (cwd && cwd !== '~') ? cwd : null;
 }
 
 // ── Broadcast mode ────────────────────────────────────────────────────────────
@@ -1018,6 +1304,84 @@ async function executeAndClose(entry) {
   }
 }
 
+// ── Right-click context menu ──────────────────────────────────────────────────
+
+let _ctxMenuPane = null;
+
+function openContextMenu(e, pane) {
+  e.preventDefault();
+  _ctxMenuPane = pane;
+
+  const menu     = document.getElementById('context-menu');
+  const copyItem = document.getElementById('ctx-copy');
+  copyItem.classList.toggle('disabled', !pane.term.getSelection());
+
+  // Reveal off-screen first so offsetWidth/Height are real, then clamp into view
+  menu.style.left = '-9999px';
+  menu.style.top  = '-9999px';
+  menu.classList.remove('hidden');
+
+  const x = Math.min(e.clientX, window.innerWidth  - menu.offsetWidth  - 4);
+  const y = Math.min(e.clientY, window.innerHeight - menu.offsetHeight - 4);
+  menu.style.left = Math.max(0, x) + 'px';
+  menu.style.top  = Math.max(0, y) + 'px';
+}
+
+function closeContextMenu() {
+  document.getElementById('context-menu').classList.add('hidden');
+  _ctxMenuPane = null;
+}
+
+function initContextMenu() {
+  document.getElementById('ctx-copy').addEventListener('click', () => {
+    if (!_ctxMenuPane) return;
+    const sel = _ctxMenuPane.term.getSelection();
+    if (sel) navigator.clipboard.writeText(sel).catch(() => {});
+    closeContextMenu();
+  });
+
+  document.getElementById('ctx-paste').addEventListener('click', () => {
+    if (!_ctxMenuPane) return;
+    navigator.clipboard.readText().then(text => {
+      if (text) window.electronAPI.writeToShell(_ctxMenuPane.sessionId, text);
+    }).catch(() => {});
+    closeContextMenu();
+  });
+
+  document.getElementById('ctx-clear').addEventListener('click', () => {
+    if (!_ctxMenuPane) return;
+    window.electronAPI.writeToShell(_ctxMenuPane.sessionId, '\x0c');
+    closeContextMenu();
+  });
+
+  // Close on any click outside the menu
+  document.addEventListener('mousedown', (e) => {
+    if (!document.getElementById('context-menu').classList.contains('hidden')) {
+      if (!e.target.closest('#context-menu')) closeContextMenu();
+    }
+  }, true);
+}
+
+// ── Toast notifications ───────────────────────────────────────────────────────
+
+const TOAST_ICONS = { success: '✓', error: '✕', info: '●' };
+
+function showToast(message, type = 'info', duration = 3500) {
+  const container = document.getElementById('toast-container');
+  const toast = document.createElement('div');
+  toast.className = `toast toast-${type}`;
+  toast.innerHTML =
+    `<span class="toast-icon">${TOAST_ICONS[type] ?? TOAST_ICONS.info}</span>` +
+    `<span>${message}</span>`;
+  container.appendChild(toast);
+
+  const remove = () => {
+    toast.classList.add('toast-leaving');
+    toast.addEventListener('animationend', () => toast.remove(), { once: true });
+  };
+  setTimeout(remove, duration);
+}
+
 // ── Team snippet sync ─────────────────────────────────────────────────────────
 
 async function syncTeamSnippets() {
@@ -1027,7 +1391,12 @@ async function syncTeamSnippets() {
     const result = await window.electronAPI.syncTeamSnippets(state.config.teamSnippetsRepo);
     if (result.ok) {
       state.teamSnippets = result.snippets;
+      showToast(`Synced ${result.snippets.length} team snippet${result.snippets.length !== 1 ? 's' : ''}`, 'success');
+    } else {
+      showToast(`Snippet sync failed: ${result.error || 'unknown error'}`, 'error', 5000);
     }
+  } catch (err) {
+    showToast(`Snippet sync failed: ${err.message}`, 'error', 5000);
   } finally {
     btn.classList.remove('syncing');
   }

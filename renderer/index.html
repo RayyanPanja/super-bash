@@ -44,6 +44,26 @@
     <!-- Per-tab split-pane containers injected by terminal.js -->
   </div>
 
+  <!-- ── Git status bar ───────────────────────────────────────────── -->
+  <div id="git-bar" class="git-no-repo">
+    <div id="git-bar-left">
+      <span id="git-branch" title="View git log">
+        <span id="git-branch-icon">⎇</span>
+        <span id="git-branch-name"></span>
+      </span>
+      <span id="git-dirty">
+        <span id="git-dirty-dot">●</span>
+        <span id="git-dirty-count"></span>
+      </span>
+      <span id="git-ahead-behind"></span>
+    </div>
+    <div id="git-bar-right">
+      <button class="git-bar-btn" id="git-btn-fetch" title="git fetch">fetch</button>
+      <button class="git-bar-btn" id="git-btn-pull"  title="git pull">pull</button>
+      <button class="git-bar-btn" id="git-btn-push"  title="git push">push</button>
+    </div>
+  </div>
+
   <!-- ── Command palette ───────────────────────────────────────────── -->
   <div id="palette-overlay" class="hidden">
     <div id="palette-modal">

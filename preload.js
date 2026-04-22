@@ -59,6 +59,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   /** Read .superbash from dirPath — returns parsed object or null if absent. */
   checkProfile: (dirPath) => ipcRenderer.invoke('profile:check', dirPath),
 
+  // ── Git status ─────────────────────────────────────────────────────────────
+  /** Run git queries for dirPath — returns { isRepo, branch, dirty, ahead, behind }. */
+  getGitStatus: (dirPath) => ipcRenderer.invoke('git:status', dirPath),
+
   // ── Session persistence ────────────────────────────────────────────────────
   /** Load saved session from ~/.superbash/session.json — returns null if absent. */
   loadSession: () => ipcRenderer.invoke('session:load'),

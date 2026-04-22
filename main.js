@@ -8,9 +8,10 @@
  */
 
 const { app, BrowserWindow, ipcMain, screen } = require('electron');
-const path = require('path');
-const os   = require('os');
-const fs   = require('fs');
+const path   = require('path');
+const os     = require('os');
+const fs     = require('fs');
+const { exec } = require('child_process');
 const PtyManager = require('./shell/ptyManager');
 const ConfigLoader = require('./config/configLoader');
 
@@ -57,20 +58,60 @@ app.on('activate', () => {
 
 ipcMain.handle('config:load', () => ConfigLoader.load());
 
+// ── Shared helper: Git Bash → native path ────────────────────────────────────
+// Git Bash on Windows reports $PWD as /c/Users/… — Node's fs/exec need C:\Users\…
+
+function resolveShellPath(shellPath) {
+  if (process.platform === 'win32' && /^\/[a-zA-Z]\//.test(shellPath)) {
+    return shellPath[1].toUpperCase() + ':' + shellPath.slice(2).replace(/\//g, path.sep);
+  }
+  return shellPath;
+}
+
 // ── IPC: Per-project profile ──────────────────────────────────────────────────
 
 ipcMain.handle('profile:check', (_event, dirPath) => {
   try {
-    // Git Bash on Windows reports paths as /c/Users/… — convert to C:\Users\…
-    let resolved = dirPath;
-    if (process.platform === 'win32' && /^\/[a-zA-Z]\//.test(dirPath)) {
-      resolved = dirPath[1].toUpperCase() + ':' + dirPath.slice(2).replace(/\//g, path.sep);
-    }
+    let resolved = resolveShellPath(dirPath);
     const raw = fs.readFileSync(path.join(resolved, '.superbash'), 'utf8');
     return JSON.parse(raw);
   } catch {
     return null;
   }
+});
+
+// ── IPC: Git status ───────────────────────────────────────────────────────────
+
+function runGit(cmd, cwd) {
+  return new Promise((resolve) => {
+    exec(cmd, { cwd, timeout: 5000, windowsHide: true }, (err, stdout) => {
+      resolve(err ? null : stdout.trim());
+    });
+  });
+}
+
+ipcMain.handle('git:status', async (_event, dirPath) => {
+  const cwd = resolveShellPath(dirPath);
+  const [branch, porcelain, aheadBehind] = await Promise.all([
+    runGit('git rev-parse --abbrev-ref HEAD', cwd),
+    runGit('git status --porcelain',          cwd),
+    runGit('git rev-list --left-right --count HEAD...@{upstream}', cwd),
+  ]);
+
+  if (!branch) return { isRepo: false };
+
+  const dirty = porcelain
+    ? porcelain.split('\n').filter(l => l.trim()).length
+    : 0;
+
+  let ahead = 0, behind = 0;
+  if (aheadBehind) {
+    const [a, b] = aheadBehind.split(/\s+/).map(Number);
+    ahead  = a || 0;
+    behind = b || 0;
+  }
+
+  return { isRepo: true, branch, dirty, ahead, behind };
 });
 
 // ── IPC: Session persistence ──────────────────────────────────────────────────

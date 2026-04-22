@@ -10,6 +10,7 @@
   --titlebar-height:   36px;
   --tab-bar-height:    32px;
   --pane-header-height:28px;
+  --git-bar-height:    24px;
   --divider-width:     4px;
   --border-radius:     0px;
 }
@@ -187,7 +188,7 @@ html, body {
 #tabs-content {
   flex: 1 1 0;
   overflow: hidden;
-  height: calc(100vh - var(--titlebar-height) - var(--tab-bar-height));
+  height: calc(100vh - var(--titlebar-height) - var(--tab-bar-height) - var(--git-bar-height));
 }
 
 .tab-content {
@@ -468,4 +469,112 @@ html, body {
   font-size: 10px;
   color: var(--text-dim);
   letter-spacing: 0.04em;
+}
+
+/* ── Git status bar ──────────────────────────────────────────────────────── */
+#git-bar {
+  height: var(--git-bar-height);
+  background: var(--bg-secondary);
+  border-top: 1px solid #1f1f1f;
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  gap: 10px;
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+#git-bar-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+#git-bar-right {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+}
+
+#git-branch {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--accent);
+  cursor: pointer;
+  padding: 1px 6px;
+  border-radius: 3px;
+  transition: background 0.1s;
+  flex-shrink: 0;
+}
+
+#git-branch:hover {
+  background: var(--accent-dim);
+}
+
+#git-branch-icon {
+  font-size: 11px;
+  line-height: 1;
+}
+
+#git-branch-name {
+  font-size: 11px;
+  max-width: 180px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#git-dirty {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+#git-dirty-dot {
+  font-size: 7px;
+  line-height: 1;
+}
+
+#git-dirty-count {
+  font-size: 11px;
+}
+
+#git-ahead-behind {
+  font-size: 11px;
+  color: #777;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.git-bar-btn {
+  height: 16px;
+  padding: 0 6px;
+  background: transparent;
+  border: 1px solid #282828;
+  border-radius: 2px;
+  color: var(--text-dim);
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s, border-color 0.1s;
+}
+
+.git-bar-btn:hover {
+  background: var(--accent-dim);
+  color: var(--accent);
+  border-color: rgba(240, 165, 0, 0.35);
+}
+
+/* Hide content when not in a git repo */
+#git-bar.git-no-repo #git-bar-left,
+#git-bar.git-no-repo #git-bar-right {
+  visibility: hidden;
 }

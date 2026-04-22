@@ -118,6 +118,79 @@ function unloadProfile(pane) {
   }
 }
 
+// ── Git status bar ────────────────────────────────────────────────────────────
+
+let _gitRefreshBusy = false;
+
+function initGitBar() {
+  document.getElementById('git-branch').addEventListener('click', () =>
+    writeToActivePane('git log --oneline -10\n')
+  );
+  document.getElementById('git-btn-fetch').addEventListener('click', () =>
+    writeToActivePane('git fetch\n')
+  );
+  document.getElementById('git-btn-pull').addEventListener('click', () =>
+    writeToActivePane('git pull\n')
+  );
+  document.getElementById('git-btn-push').addEventListener('click', () =>
+    writeToActivePane('git push\n')
+  );
+  setInterval(refreshGitBar, 3000);
+}
+
+function writeToActivePane(cmd) {
+  const tab = state.tabs.find(t => t.id === state.activeTabId);
+  if (!tab) return;
+  const pane = tab.panes[tab.activePaneId];
+  if (pane) window.electronAPI.writeToShell(pane.sessionId, cmd);
+}
+
+async function refreshGitBar() {
+  if (_gitRefreshBusy) return;
+  _gitRefreshBusy = true;
+  try {
+    const tab  = state.tabs.find(t => t.id === state.activeTabId);
+    const pane = tab?.panes[tab.activePaneId] || tab?.panes.left;
+    if (!pane?.cwd) { updateGitBar(null); return; }
+    const status = await window.electronAPI.getGitStatus(pane.cwd);
+    updateGitBar(status);
+  } finally {
+    _gitRefreshBusy = false;
+  }
+}
+
+function updateGitBar(status) {
+  const bar = document.getElementById('git-bar');
+
+  if (!status?.isRepo) {
+    bar.classList.add('git-no-repo');
+    return;
+  }
+
+  bar.classList.remove('git-no-repo');
+
+  document.getElementById('git-branch-name').textContent = status.branch;
+
+  const dirtyEl = document.getElementById('git-dirty');
+  if (status.dirty > 0) {
+    document.getElementById('git-dirty-count').textContent = status.dirty;
+    dirtyEl.style.display = 'flex';
+  } else {
+    dirtyEl.style.display = 'none';
+  }
+
+  const abEl = document.getElementById('git-ahead-behind');
+  const parts = [];
+  if (status.ahead  > 0) parts.push(`↑${status.ahead}`);
+  if (status.behind > 0) parts.push(`↓${status.behind}`);
+  if (parts.length > 0) {
+    abEl.textContent = parts.join(' ');
+    abEl.style.display = '';
+  } else {
+    abEl.style.display = 'none';
+  }
+}
+
 // ── Initialization ────────────────────────────────────────────────────────────
 
 async function init() {
@@ -136,6 +209,7 @@ async function init() {
   document.getElementById('btn-new-tab').addEventListener('click', () => createTab());
 
   initPalette();
+  initGitBar();
 
   // Capture phase so our shortcuts are handled before xterm sees the keystroke
   document.addEventListener('keydown', handleGlobalKeydown, { capture: true });
@@ -146,6 +220,8 @@ async function init() {
   if (!restored) {
     await createTab();
   }
+
+  refreshGitBar();
 }
 
 // ── Session persistence ───────────────────────────────────────────────────────
@@ -371,6 +447,7 @@ async function createPane(tabId, side) {
     if (cwdEl) cwdEl.textContent = title;
     if (state.activeTabId === tabId && tab.activePaneId === side) {
       updateTabLabel(tabId);
+      refreshGitBar();
     }
     checkProjectProfile(pane, title);
   });
@@ -443,6 +520,7 @@ function setActivePaneFocus(tabId, side) {
   document.getElementById(elId.pane(tabId, side))?.classList.add('active');
   tab.panes[side].term.focus();
   updateTabLabel(tabId);
+  refreshGitBar();
 }
 
 // ── Tab label ─────────────────────────────────────────────────────────────────

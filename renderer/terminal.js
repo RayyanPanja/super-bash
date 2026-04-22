@@ -1,26 +1,50 @@
 /**
  * terminal.js
  *
- * Manages xterm.js terminal instances for the left and right panes.
- * Handles: pane creation, split/close, divider drag-to-resize,
- * keyboard shortcuts, font zoom, and PTY ↔ xterm wiring.
+ * Multi-tab terminal manager with per-tab split panes and session restore.
+ * Each tab owns its own left/right pane pair and runs independent shell sessions.
  *
  * Globals provided by <script> tags in index.html (xterm v4 UMD builds):
  *   Terminal, FitAddon, WebLinksAddon, SearchAddon
  */
 
-// ── Application state ────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function uid() {
+  return Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 10);
+}
+
+function cwdLabel(fullPath) {
+  if (!fullPath || fullPath === '~') return '~';
+  const parts = fullPath.replace(/\\/g, '/').split('/').filter(Boolean);
+  return parts[parts.length - 1] || fullPath;
+}
+
+// Stable element ID helpers so tab-scoped IDs are never mis-typed
+const elId = {
+  tabContent: (t)    => `tab-content-${t}`,
+  pane:       (t, s) => `pane-${s}-${t}`,
+  terminal:   (t, s) => `terminal-${s}-${t}`,
+  cwd:        (t, s) => `cwd-${s}-${t}`,
+  divider:    (t)    => `divider-${t}`,
+};
+
+// ── Application state ─────────────────────────────────────────────────────────
+
+/**
+ * @typedef {{ term: Terminal, fitAddon: FitAddon, sessionId: string,
+ *             unsubData: ()=>void, unsubExit: ()=>void, cwd: string }} PaneState
+ * @typedef {{ id: string, panes: {left: PaneState|null, right: PaneState|null},
+ *             activePaneId: string, isSplit: boolean }} TabState
+ */
 
 const state = {
-  /** @type {{ term: Terminal, fitAddon: FitAddon, sessionId: string, unsubData: ()=>void, unsubExit: ()=>void } | null} */
-  panes: {
-    left:  null,
-    right: null,
-  },
-  activePaneId: 'left',
-  isSplit: false,
+  /** @type {TabState[]} */
+  tabs: [],
+  /** @type {string|null} */
+  activeTabId: null,
   fontSize: 14,
-  /** @type {object} merged config from main process */
+  /** @type {object|null} */
   config: null,
 };
 
@@ -42,17 +66,12 @@ const XTERM_THEME = {
   brightCyan:     '#56b6c2', brightWhite:  '#ffffff',
 };
 
-// ── Initialization ───────────────────────────────────────────────────────────
+// ── Initialization ────────────────────────────────────────────────────────────
 
 async function init() {
-  // Load merged config (team + personal) from main process
   state.config = await window.electronAPI.loadConfig();
   state.fontSize = state.config.fontSize || 14;
 
-  // Left pane is always open at startup
-  await createPane('left');
-
-  // Wire titlebar window control buttons
   document.getElementById('btn-minimize').addEventListener('click', () =>
     window.electronAPI.minimizeWindow()
   );
@@ -62,27 +81,178 @@ async function init() {
   document.getElementById('btn-close').addEventListener('click', () =>
     window.electronAPI.closeWindow()
   );
+  document.getElementById('btn-new-tab').addEventListener('click', () => createTab());
 
-  // Divider drag-to-resize
-  initDividerDrag();
+  // Capture phase so our shortcuts are handled before xterm sees the keystroke
+  document.addEventListener('keydown', handleGlobalKeydown, { capture: true });
 
-  // Global keyboard shortcuts
-  document.addEventListener('keydown', handleGlobalKeydown);
-
-  // Re-fit terminals when the Electron window is resized
   window.addEventListener('resize', () => fitAll());
 
-  setActivePane('left');
+  const restored = await tryRestoreSession();
+  if (!restored) {
+    await createTab();
+  }
 }
 
-// ── Pane creation ────────────────────────────────────────────────────────────
+// ── Session persistence ───────────────────────────────────────────────────────
 
-/**
- * Creates an xterm Terminal, loads addons, opens it in the DOM,
- * spawns a PTY session, and wires the two together.
- */
-async function createPane(paneId) {
-  const container = document.getElementById(`terminal-${paneId}`);
+async function saveSession() {
+  if (!state.config || state.config.restoreSession === false) return;
+  const data = {
+    activeTabIndex: Math.max(0, state.tabs.findIndex(t => t.id === state.activeTabId)),
+    tabs: state.tabs.map(tab => ({
+      cwd:        tab.panes.left?.cwd  || null,
+      isSplit:    tab.isSplit,
+      rightCwd:   tab.panes.right?.cwd || null,
+      activePane: tab.activePaneId,
+    })),
+  };
+  await window.electronAPI.saveSession(data);
+}
+
+async function tryRestoreSession() {
+  if (state.config.restoreSession === false) return false;
+
+  const session = await window.electronAPI.loadSession();
+  if (!session || !Array.isArray(session.tabs) || session.tabs.length === 0) return false;
+
+  for (const saved of session.tabs) {
+    const tabId = await createTab(saved.cwd || null);
+    if (saved.isSplit) {
+      await openSplit(tabId);
+      if (saved.rightCwd) {
+        const tab = state.tabs.find(t => t.id === tabId);
+        const rightPane = tab?.panes.right;
+        if (rightPane) setTimeout(() => cdPane(rightPane, saved.rightCwd), 500);
+      }
+    }
+  }
+
+  const activeIdx = Math.min(
+    session.activeTabIndex || 0,
+    state.tabs.length - 1
+  );
+  await switchTab(state.tabs[Math.max(0, activeIdx)].id);
+  return true;
+}
+
+// ── Tab DOM ───────────────────────────────────────────────────────────────────
+
+function buildTabDOM(tabId) {
+  // Tab button
+  const btn = document.createElement('button');
+  btn.className = 'tab';
+  btn.dataset.tabId = tabId;
+  btn.innerHTML =
+    `<span class="tab-cwd">~</span>` +
+    `<span class="tab-close" title="Close tab (Ctrl+W)">&#x2715;</span>`;
+  btn.querySelector('.tab-close').addEventListener('click', (e) => {
+    e.stopPropagation();
+    closeTab(tabId);
+  });
+  btn.addEventListener('click', () => switchTab(tabId));
+  document.getElementById('tabs-list').appendChild(btn);
+
+  // Tab content: left pane + divider + right pane
+  const content = document.createElement('div');
+  content.id = elId.tabContent(tabId);
+  content.className = 'tab-content';
+  content.innerHTML = `
+    <div class="terminal-pane active" id="${elId.pane(tabId, 'left')}">
+      <div class="pane-titlebar">
+        <span class="pane-cwd" id="${elId.cwd(tabId, 'left')}">~</span>
+      </div>
+      <div class="terminal-wrapper" id="${elId.terminal(tabId, 'left')}"></div>
+    </div>
+    <div id="${elId.divider(tabId)}" class="pane-divider hidden"></div>
+    <div class="terminal-pane hidden" id="${elId.pane(tabId, 'right')}">
+      <div class="pane-titlebar">
+        <span class="pane-cwd" id="${elId.cwd(tabId, 'right')}">~</span>
+      </div>
+      <div class="terminal-wrapper" id="${elId.terminal(tabId, 'right')}"></div>
+    </div>
+  `;
+  document.getElementById('tabs-content').appendChild(content);
+
+  initDividerDrag(tabId);
+}
+
+function removeTabDOM(tabId) {
+  document.querySelector(`.tab[data-tab-id="${tabId}"]`)?.remove();
+  document.getElementById(elId.tabContent(tabId))?.remove();
+}
+
+// ── Tab lifecycle ─────────────────────────────────────────────────────────────
+
+async function createTab(restoreCwd = null) {
+  const tabId = uid();
+  /** @type {TabState} */
+  const tab = { id: tabId, panes: { left: null, right: null }, activePaneId: 'left', isSplit: false };
+  state.tabs.push(tab);
+  buildTabDOM(tabId);
+
+  await switchTab(tabId);
+  await createPane(tabId, 'left');
+
+  if (restoreCwd) {
+    setTimeout(() => cdPane(tab.panes.left, restoreCwd), 500);
+  }
+
+  saveSession();
+  return tabId;
+}
+
+async function closeTab(tabId) {
+  const tab = state.tabs.find(t => t.id === tabId);
+  if (!tab) return;
+
+  for (const side of ['left', 'right']) {
+    if (tab.panes[side]) destroyPane(tab, side);
+  }
+
+  const idx = state.tabs.findIndex(t => t.id === tabId);
+  state.tabs.splice(idx, 1);
+  removeTabDOM(tabId);
+
+  if (state.tabs.length === 0) {
+    window.electronAPI.closeWindow();
+    return;
+  }
+
+  const nextIdx = Math.min(idx, state.tabs.length - 1);
+  await switchTab(state.tabs[nextIdx].id);
+  saveSession();
+}
+
+async function switchTab(tabId) {
+  // Hide all tab contents and deactivate all tab buttons
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('tab-active'));
+  document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
+
+  const content = document.getElementById(elId.tabContent(tabId));
+  if (content) content.classList.add('tab-active');
+
+  const btn = document.querySelector(`.tab[data-tab-id="${tabId}"]`);
+  if (btn) btn.classList.add('active');
+
+  state.activeTabId = tabId;
+
+  const tab = state.tabs.find(t => t.id === tabId);
+  if (tab) {
+    // Let the browser complete the display change before fitting
+    await new Promise(resolve => requestAnimationFrame(resolve));
+    fitAllInTab(tab);
+    setActivePaneFocus(tabId, tab.activePaneId);
+  }
+}
+
+// ── Pane creation ─────────────────────────────────────────────────────────────
+
+async function createPane(tabId, side) {
+  const tab = state.tabs.find(t => t.id === tabId);
+  if (!tab) return;
+
+  const container = document.getElementById(elId.terminal(tabId, side));
 
   const term = new Terminal({
     fontFamily: '"JetBrains Mono", "Courier New", monospace',
@@ -94,9 +264,9 @@ async function createPane(paneId) {
     allowProposedApi: true,
   });
 
-  const fitAddon     = new FitAddon.FitAddon();
-  const webLinks     = new WebLinksAddon.WebLinksAddon();
-  const searchAddon  = new SearchAddon.SearchAddon();
+  const fitAddon    = new FitAddon.FitAddon();
+  const webLinks    = new WebLinksAddon.WebLinksAddon();
+  const searchAddon = new SearchAddon.SearchAddon();
 
   term.loadAddon(fitAddon);
   term.loadAddon(webLinks);
@@ -105,225 +275,285 @@ async function createPane(paneId) {
   term.open(container);
   fitAddon.fit();
 
-  // Spawn PTY in main process
+  // Inject PROMPT_COMMAND to track CWD via OSC 0 title changes.
+  // User's config.env can override this; .bashrc will take priority at runtime.
+  const userEnv = state.config.env || {};
+  const trackCmd = `printf '\\033]0;%s\\007' "$PWD"`;
+  const promptCmd = userEnv.PROMPT_COMMAND
+    ? `${userEnv.PROMPT_COMMAND}; ${trackCmd}`
+    : trackCmd;
+
   const sessionId = await window.electronAPI.createShell({
     cols:      term.cols,
     rows:      term.rows,
-    env:       state.config.env || {},
+    env:       { ...userEnv, PROMPT_COMMAND: promptCmd },
     shellPath: state.config.shellPath || null,
     aliases:   state.config.aliases || {},
   });
 
-  // Keystrokes → PTY
-  term.onData((data) => {
-    window.electronAPI.writeToShell(sessionId, data);
-  });
+  term.onData((data) => window.electronAPI.writeToShell(sessionId, data));
 
-  // PTY output → terminal display
-  const unsubData = window.electronAPI.onShellData(sessionId, (data) => {
-    term.write(data);
-  });
-
-  // PTY exit notification
+  const unsubData = window.electronAPI.onShellData(sessionId, (data) => term.write(data));
   const unsubExit = window.electronAPI.onShellExit(sessionId, () => {
     term.write('\r\n\x1b[33m[Process exited — press any key to close pane]\x1b[0m\r\n');
   });
 
-  // Print startup message from config (styled in amber)
   if (state.config.startupMessage) {
     term.write(`\x1b[33m${state.config.startupMessage}\x1b[0m\r\n`);
   }
 
-  // Update pane CWD label when shell reports a title change via OSC 0/2
+  // Build pane state before registering the title-change handler so the
+  // closure can write back into the same object.
+  const pane = { term, fitAddon, sessionId, unsubData, unsubExit, cwd: '~' };
+  tab.panes[side] = pane;
+
   term.onTitleChange((title) => {
-    if (title) {
-      document.getElementById(`cwd-${paneId}`).textContent = title;
+    if (!title) return;
+    pane.cwd = title;
+    const cwdEl = document.getElementById(elId.cwd(tabId, side));
+    if (cwdEl) cwdEl.textContent = title;
+    if (state.activeTabId === tabId && tab.activePaneId === side) {
+      updateTabLabel(tabId);
     }
   });
 
-  // Clicking inside the terminal wrapper focuses that pane
-  container.addEventListener('mousedown', () => setActivePane(paneId));
-
-  state.panes[paneId] = { term, fitAddon, sessionId, unsubData, unsubExit };
+  container.addEventListener('mousedown', () => {
+    if (state.activeTabId === tabId) setActivePaneFocus(tabId, side);
+  });
 }
 
-// ── Pane focus ───────────────────────────────────────────────────────────────
+// ── Pane destruction ──────────────────────────────────────────────────────────
 
-function setActivePane(paneId) {
-  if (!state.panes[paneId]) return;
-  state.activePaneId = paneId;
-
-  document.querySelectorAll('.terminal-pane').forEach((el) =>
-    el.classList.remove('active')
-  );
-  document.getElementById(`pane-${paneId}`).classList.add('active');
-  state.panes[paneId].term.focus();
-}
-
-// ── Split open / close ───────────────────────────────────────────────────────
-
-async function openSplit() {
-  if (state.isSplit) return;
-  state.isSplit = true;
-
-  // Show pane before createPane so fitAddon.fit() inside createPane
-  // measures the correct container dimensions
-  document.getElementById('pane-right').classList.remove('hidden');
-  document.getElementById('pane-divider').classList.remove('hidden');
-
-  // Force a layout cycle so the browser computes pane dimensions
-  // before xterm's fit addon measures the container
-  await new Promise(resolve => requestAnimationFrame(resolve));
-
-  await createPane('right');
-  fitAll();
-  setActivePane('right');
-}
-
-function closePane(paneId) {
-  const pane = state.panes[paneId];
+function destroyPane(tab, side) {
+  const pane = tab.panes[side];
   if (!pane) return;
-
-  // Tear down listeners and kill the PTY session
   pane.unsubData();
   pane.unsubExit();
   window.electronAPI.destroyShell(pane.sessionId);
   pane.term.dispose();
-  state.panes[paneId] = null;
-
-  if (paneId === 'right') {
-    state.isSplit = false;
-    document.getElementById('pane-right').classList.add('hidden');
-    document.getElementById('pane-divider').classList.add('hidden');
-    // Reset left pane flex so it fills the container again
-    document.getElementById('pane-left').style.flex = '';
-    setActivePane('left');
-  } else if (paneId === 'left') {
-    // Closing the left pane also closes right (no orphan panes)
-    if (state.panes.right) closePane('right');
-  }
+  tab.panes[side] = null;
 }
 
-// ── Fit all visible terminals ─────────────────────────────────────────────────
+// ── Split open / close ────────────────────────────────────────────────────────
 
-function fitAll() {
-  for (const paneId of Object.keys(state.panes)) {
-    const pane = state.panes[paneId];
+async function openSplit(tabId) {
+  const tab = state.tabs.find(t => t.id === tabId);
+  if (!tab || tab.isSplit) return;
+  tab.isSplit = true;
+
+  document.getElementById(elId.pane(tabId, 'right')).classList.remove('hidden');
+  document.getElementById(elId.divider(tabId)).classList.remove('hidden');
+
+  await new Promise(resolve => requestAnimationFrame(resolve));
+  await createPane(tabId, 'right');
+  fitAllInTab(tab);
+  setActivePaneFocus(tabId, 'right');
+}
+
+function closePane(tabId, side) {
+  const tab = state.tabs.find(t => t.id === tabId);
+  if (!tab || !tab.panes[side]) return;
+
+  destroyPane(tab, side);
+
+  if (side === 'right') {
+    tab.isSplit = false;
+    document.getElementById(elId.pane(tabId, 'right')).classList.add('hidden');
+    document.getElementById(elId.divider(tabId)).classList.add('hidden');
+    document.getElementById(elId.pane(tabId, 'left')).style.flex = '';
+    setActivePaneFocus(tabId, 'left');
+  } else {
+    // Closing left pane closes right too (no orphans)
+    if (tab.panes.right) closePane(tabId, 'right');
+    closeTab(tabId);
+    return;
+  }
+  saveSession();
+}
+
+// ── Focus management ──────────────────────────────────────────────────────────
+
+function setActivePaneFocus(tabId, side) {
+  const tab = state.tabs.find(t => t.id === tabId);
+  if (!tab || !tab.panes[side]) return;
+  tab.activePaneId = side;
+
+  if (state.activeTabId !== tabId) return;
+
+  const content = document.getElementById(elId.tabContent(tabId));
+  content?.querySelectorAll('.terminal-pane').forEach(el => el.classList.remove('active'));
+  document.getElementById(elId.pane(tabId, side))?.classList.add('active');
+  tab.panes[side].term.focus();
+  updateTabLabel(tabId);
+}
+
+// ── Tab label ─────────────────────────────────────────────────────────────────
+
+function updateTabLabel(tabId) {
+  const tab = state.tabs.find(t => t.id === tabId);
+  if (!tab) return;
+  const pane = tab.panes[tab.activePaneId] || tab.panes.left;
+  const label = cwdLabel(pane?.cwd || '~');
+  const btn = document.querySelector(`.tab[data-tab-id="${tabId}"]`);
+  if (btn) btn.querySelector('.tab-cwd').textContent = label;
+}
+
+// ── Fit ───────────────────────────────────────────────────────────────────────
+
+function fitAllInTab(tab) {
+  for (const pane of Object.values(tab.panes)) {
     if (!pane) continue;
     pane.fitAddon.fit();
     window.electronAPI.resizeShell(pane.sessionId, pane.term.cols, pane.term.rows);
   }
 }
 
-// ── Divider drag-to-resize ───────────────────────────────────────────────────
+function fitAll() {
+  // Only the active tab is visible; inactive tabs fit when switched to.
+  const tab = state.tabs.find(t => t.id === state.activeTabId);
+  if (tab) fitAllInTab(tab);
+}
 
-function initDividerDrag() {
-  const divider   = document.getElementById('pane-divider');
-  const container = document.getElementById('terminal-container');
-  const leftPane  = document.getElementById('pane-left');
-  const rightPane = document.getElementById('pane-right');
+// ── CWD restore helper ────────────────────────────────────────────────────────
 
-  let isDragging    = false;
-  let startX        = 0;
-  let startLeftPx   = 0;
+function cdPane(pane, cwd) {
+  if (!pane || !cwd) return;
+  const safe = cwd.replace(/\\/g, '/').replace(/"/g, '\\"');
+  window.electronAPI.writeToShell(pane.sessionId, `cd "${safe}"\n`);
+}
+
+// ── Divider drag-to-resize ────────────────────────────────────────────────────
+
+function initDividerDrag(tabId) {
+  const divider  = document.getElementById(elId.divider(tabId));
+  const leftPane = document.getElementById(elId.pane(tabId, 'left'));
+  const content  = document.getElementById(elId.tabContent(tabId));
+
+  let dragging    = false;
+  let startX      = 0;
+  let startLeftPx = 0;
 
   divider.addEventListener('mousedown', (e) => {
-    isDragging  = true;
+    dragging    = true;
     startX      = e.clientX;
     startLeftPx = leftPane.getBoundingClientRect().width;
     divider.classList.add('dragging');
     document.body.style.cursor = 'col-resize';
-    // Prevent text selection while dragging
     e.preventDefault();
   });
 
   document.addEventListener('mousemove', (e) => {
-    if (!isDragging) return;
-    const totalWidth   = container.getBoundingClientRect().width;
+    if (!dragging) return;
+    const totalWidth   = content.getBoundingClientRect().width;
     const dividerWidth = divider.getBoundingClientRect().width;
     const delta        = e.clientX - startX;
-    const newLeft      = Math.max(
-      100,
-      Math.min(totalWidth - dividerWidth - 100, startLeftPx + delta)
-    );
-    const pct = (newLeft / totalWidth) * 100;
-
-    // Set left pane to a fixed percentage; right pane takes the rest
-    leftPane.style.flex  = `0 0 ${pct}%`;
-    rightPane.style.flex = `1 1 0`;
+    const newLeft      = Math.max(100, Math.min(totalWidth - dividerWidth - 100, startLeftPx + delta));
+    const pct          = (newLeft / totalWidth) * 100;
+    leftPane.style.flex = `0 0 ${pct}%`;
+    const rightPane = document.getElementById(elId.pane(tabId, 'right'));
+    if (rightPane) rightPane.style.flex = '1 1 0';
   });
 
   document.addEventListener('mouseup', () => {
-    if (!isDragging) return;
-    isDragging = false;
+    if (!dragging) return;
+    dragging = false;
     divider.classList.remove('dragging');
     document.body.style.cursor = '';
-    // Re-fit after resize so xterm columns update
-    fitAll();
+    const tab = state.tabs.find(t => t.id === tabId);
+    if (tab) fitAllInTab(tab);
   });
 }
 
-// ── Keyboard shortcuts ───────────────────────────────────────────────────────
+// ── Keyboard shortcuts ────────────────────────────────────────────────────────
 
 function handleGlobalKeydown(e) {
   const { ctrlKey, shiftKey, key } = e;
+  const activeTab = state.tabs.find(t => t.id === state.activeTabId);
 
-  // Ctrl+Shift+T — open split pane
+  // Ctrl+T — new tab
+  if (ctrlKey && !shiftKey && key === 't') {
+    e.preventDefault(); e.stopPropagation();
+    createTab();
+    return;
+  }
+
+  // Ctrl+W — close active tab
+  if (ctrlKey && !shiftKey && key === 'w') {
+    e.preventDefault(); e.stopPropagation();
+    if (state.activeTabId) closeTab(state.activeTabId);
+    return;
+  }
+
+  // Ctrl+1-9 — switch to tab N
+  if (ctrlKey && !shiftKey && key >= '1' && key <= '9') {
+    const idx = parseInt(key, 10) - 1;
+    if (idx < state.tabs.length) {
+      e.preventDefault(); e.stopPropagation();
+      switchTab(state.tabs[idx].id);
+    }
+    return;
+  }
+
+  // Ctrl+Shift+T — split active tab into two panes
   if (ctrlKey && shiftKey && key === 'T') {
-    e.preventDefault();
-    openSplit();
+    e.preventDefault(); e.stopPropagation();
+    if (state.activeTabId) openSplit(state.activeTabId);
     return;
   }
 
-  // Ctrl+Shift+W — close focused pane
+  // Ctrl+Shift+W — close focused pane (or tab if only one pane)
   if (ctrlKey && shiftKey && key === 'W') {
-    e.preventDefault();
-    closePane(state.activePaneId);
+    e.preventDefault(); e.stopPropagation();
+    if (activeTab) closePane(state.activeTabId, activeTab.activePaneId);
     return;
   }
 
-  // Ctrl+Tab — switch focus between panes
-  if (ctrlKey && key === 'Tab') {
-    e.preventDefault();
-    if (state.isSplit) {
-      setActivePane(state.activePaneId === 'left' ? 'right' : 'left');
+  // Ctrl+Tab — toggle focus between left / right pane
+  if (ctrlKey && !shiftKey && key === 'Tab') {
+    e.preventDefault(); e.stopPropagation();
+    if (activeTab && activeTab.isSplit) {
+      setActivePaneFocus(state.activeTabId, activeTab.activePaneId === 'left' ? 'right' : 'left');
     }
     return;
   }
 
-  // Ctrl+Shift+C — copy terminal selection to clipboard
+  // Ctrl+Shift+C — copy selection to clipboard
   if (ctrlKey && shiftKey && key === 'C') {
-    e.preventDefault();
-    const pane = state.panes[state.activePaneId];
-    if (pane) {
-      const text = pane.term.getSelection();
-      if (text) navigator.clipboard.writeText(text).catch(() => {});
+    e.preventDefault(); e.stopPropagation();
+    if (activeTab) {
+      const pane = activeTab.panes[activeTab.activePaneId];
+      if (pane) {
+        const text = pane.term.getSelection();
+        if (text) navigator.clipboard.writeText(text).catch(() => {});
+      }
     }
     return;
   }
 
-  // Ctrl+Shift+V — paste from clipboard to active terminal
+  // Ctrl+Shift+V — paste from clipboard
   if (ctrlKey && shiftKey && key === 'V') {
-    e.preventDefault();
-    const pane = state.panes[state.activePaneId];
-    if (pane) {
-      navigator.clipboard.readText().then((text) => {
-        if (text) window.electronAPI.writeToShell(pane.sessionId, text);
-      }).catch(() => {});
+    e.preventDefault(); e.stopPropagation();
+    if (activeTab) {
+      const pane = activeTab.panes[activeTab.activePaneId];
+      if (pane) {
+        navigator.clipboard.readText().then(text => {
+          if (text) window.electronAPI.writeToShell(pane.sessionId, text);
+        }).catch(() => {});
+      }
     }
     return;
   }
 
-  // Ctrl+= or Ctrl+Plus — increase font size
+  // Ctrl+= or Ctrl++ — increase font size
   if (ctrlKey && !shiftKey && (key === '=' || key === '+')) {
-    e.preventDefault();
+    e.preventDefault(); e.stopPropagation();
     adjustFontSize(+1);
     return;
   }
 
   // Ctrl+- — decrease font size
   if (ctrlKey && !shiftKey && key === '-') {
-    e.preventDefault();
+    e.preventDefault(); e.stopPropagation();
     adjustFontSize(-1);
     return;
   }
@@ -331,14 +561,15 @@ function handleGlobalKeydown(e) {
 
 function adjustFontSize(delta) {
   state.fontSize = Math.max(8, Math.min(32, state.fontSize + delta));
-  for (const pane of Object.values(state.panes)) {
-    if (!pane) continue;
-    pane.term.options.fontSize = state.fontSize;
-    pane.fitAddon.fit();
-    window.electronAPI.resizeShell(pane.sessionId, pane.term.cols, pane.term.rows);
+  for (const tab of state.tabs) {
+    for (const pane of Object.values(tab.panes)) {
+      if (!pane) continue;
+      pane.term.options.fontSize = state.fontSize;
+    }
   }
+  fitAll();
 }
 
-// ── Bootstrap ────────────────────────────────────────────────────────────────
+// ── Bootstrap ─────────────────────────────────────────────────────────────────
 
 document.addEventListener('DOMContentLoaded', init);

@@ -31,28 +31,17 @@
     </div>
   </div>
 
-  <!-- ── Split terminal area ─────────────────────────────────────────── -->
-  <div id="terminal-container">
-
-    <!-- Left pane (always visible) -->
-    <div class="terminal-pane active" id="pane-left">
-      <div class="pane-titlebar">
-        <span class="pane-cwd" id="cwd-left">~</span>
-      </div>
-      <div class="terminal-wrapper" id="terminal-left"></div>
+  <!-- ── Tab bar ────────────────────────────────────────────────────── -->
+  <div id="tab-bar">
+    <div id="tabs-list">
+      <!-- Tab buttons injected by terminal.js -->
     </div>
+    <button id="btn-new-tab" title="New tab (Ctrl+T)">+</button>
+  </div>
 
-    <!-- Draggable divider -->
-    <div id="pane-divider" class="hidden"></div>
-
-    <!-- Right pane (hidden until Ctrl+Shift+T) -->
-    <div class="terminal-pane hidden" id="pane-right">
-      <div class="pane-titlebar">
-        <span class="pane-cwd" id="cwd-right">~</span>
-      </div>
-      <div class="terminal-wrapper" id="terminal-right"></div>
-    </div>
-
+  <!-- ── Tab content area ───────────────────────────────────────────── -->
+  <div id="tabs-content">
+    <!-- Per-tab split-pane containers injected by terminal.js -->
   </div>
 
   <!-- xterm.js UMD scripts — order matters: core first, then addons -->

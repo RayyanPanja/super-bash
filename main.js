@@ -9,6 +9,8 @@
 
 const { app, BrowserWindow, ipcMain, screen } = require('electron');
 const path = require('path');
+const os   = require('os');
+const fs   = require('fs');
 const PtyManager = require('./shell/ptyManager');
 const ConfigLoader = require('./config/configLoader');
 
@@ -54,6 +56,28 @@ app.on('activate', () => {
 // ── IPC: Config ──────────────────────────────────────────────────────────────
 
 ipcMain.handle('config:load', () => ConfigLoader.load());
+
+// ── IPC: Session persistence ──────────────────────────────────────────────────
+
+const SESSION_PATH = path.join(os.homedir(), '.superbash', 'session.json');
+
+ipcMain.handle('session:load', () => {
+  try {
+    return JSON.parse(fs.readFileSync(SESSION_PATH, 'utf8'));
+  } catch {
+    return null;
+  }
+});
+
+ipcMain.handle('session:save', (_event, data) => {
+  try {
+    const dir = path.dirname(SESSION_PATH);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(SESSION_PATH, JSON.stringify(data, null, 2), 'utf8');
+  } catch (e) {
+    console.error('session:save error', e.message);
+  }
+});
 
 // ── IPC: Shell / PTY ─────────────────────────────────────────────────────────
 

@@ -14,5 +14,6 @@
   },
   "env": {
     "EDITOR": "vim"
-  }
+  },
+  "restoreSession": true
 }

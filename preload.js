@@ -55,6 +55,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener(channel, handler);
   },
 
+  // ── Session persistence ────────────────────────────────────────────────────
+  /** Load saved session from ~/.superbash/session.json — returns null if absent. */
+  loadSession: () => ipcRenderer.invoke('session:load'),
+  /** Persist session state to ~/.superbash/session.json. */
+  saveSession: (data) => ipcRenderer.invoke('session:save', data),
+
   // ── Window Controls ────────────────────────────────────────────────────────
   minimizeWindow: () => ipcRenderer.send('window:minimize'),
   maximizeWindow: () => ipcRenderer.send('window:maximize'),

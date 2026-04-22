@@ -22,11 +22,13 @@ function cwdLabel(fullPath) {
 
 // Stable element ID helpers so tab-scoped IDs are never mis-typed
 const elId = {
-  tabContent: (t)    => `tab-content-${t}`,
-  pane:       (t, s) => `pane-${s}-${t}`,
-  terminal:   (t, s) => `terminal-${s}-${t}`,
-  cwd:        (t, s) => `cwd-${s}-${t}`,
-  divider:    (t)    => `divider-${t}`,
+  tabContent:  (t)    => `tab-content-${t}`,
+  pane:        (t, s) => `pane-${s}-${t}`,
+  terminal:    (t, s) => `terminal-${s}-${t}`,
+  cwd:         (t, s) => `cwd-${s}-${t}`,
+  divider:     (t)    => `divider-${t}`,
+  searchBar:   (t, s) => `search-bar-${s}-${t}`,
+  searchInput: (t, s) => `search-input-${s}-${t}`,
 };
 
 // ── Application state ─────────────────────────────────────────────────────────
@@ -225,6 +227,7 @@ async function init() {
 
   initPalette();
   initGitBar();
+  initContextMenu();
 
   // Capture phase so our shortcuts are handled before xterm sees the keystroke
   document.addEventListener('keydown', handleGlobalKeydown, { capture: true });
@@ -289,6 +292,7 @@ function buildTabDOM(tabId) {
   btn.className = 'tab';
   btn.dataset.tabId = tabId;
   btn.innerHTML =
+    `<span class="tab-activity-dot" title="New output"></span>` +
     `<span class="tab-cwd">~</span>` +
     `<span class="tab-close" title="Close tab (Ctrl+W)">&#x2715;</span>`;
   btn.querySelector('.tab-close').addEventListener('click', (e) => {
@@ -303,12 +307,21 @@ function buildTabDOM(tabId) {
   content.id = elId.tabContent(tabId);
   content.className = 'tab-content';
   const bc = state.broadcast ? 'broadcast-banner' : 'broadcast-banner hidden';
+  const searchBar = (side) => `
+    <div class="pane-search-bar hidden" id="${elId.searchBar(tabId, side)}">
+      <input class="pane-search-input" id="${elId.searchInput(tabId, side)}"
+        type="text" placeholder="Search…" autocomplete="off" spellcheck="false" />
+      <button class="search-btn" data-dir="prev" title="Previous (Shift+Enter)">&#x2191;</button>
+      <button class="search-btn" data-dir="next" title="Next (Enter)">&#x2193;</button>
+      <button class="search-btn search-close-btn" data-dir="close" title="Close (Esc)">&#x2715;</button>
+    </div>`;
   content.innerHTML = `
     <div class="terminal-pane active" id="${elId.pane(tabId, 'left')}">
       <div class="pane-titlebar">
         <span class="pane-cwd" id="${elId.cwd(tabId, 'left')}">~</span>
       </div>
       <div class="${bc}">&#x229B; BROADCAST ON</div>
+      ${searchBar('left')}
       <div class="terminal-wrapper" id="${elId.terminal(tabId, 'left')}"></div>
     </div>
     <div id="${elId.divider(tabId)}" class="pane-divider hidden"></div>
@@ -317,6 +330,7 @@ function buildTabDOM(tabId) {
         <span class="pane-cwd" id="${elId.cwd(tabId, 'right')}">~</span>
       </div>
       <div class="${bc}">&#x229B; BROADCAST ON</div>
+      ${searchBar('right')}
       <div class="terminal-wrapper" id="${elId.terminal(tabId, 'right')}"></div>
     </div>
   `;
@@ -381,7 +395,10 @@ async function switchTab(tabId) {
   if (content) content.classList.add('tab-active');
 
   const btn = document.querySelector(`.tab[data-tab-id="${tabId}"]`);
-  if (btn) btn.classList.add('active');
+  if (btn) {
+    btn.classList.add('active');
+    btn.classList.remove('has-activity');
+  }
 
   state.activeTabId = tabId;
 
@@ -444,7 +461,13 @@ async function createPane(tabId, side) {
     if (state.broadcast) broadcastToOthers(sessionId, data);
   });
 
-  const unsubData = window.electronAPI.onShellData(sessionId, (data) => term.write(data));
+  const unsubData = window.electronAPI.onShellData(sessionId, (data) => {
+    term.write(data);
+    if (state.activeTabId !== tabId) {
+      const tabBtn = document.querySelector(`.tab[data-tab-id="${tabId}"]`);
+      if (tabBtn) tabBtn.classList.add('has-activity');
+    }
+  });
   const unsubExit = window.electronAPI.onShellExit(sessionId, () => {
     term.write('\r\n\x1b[33m[Process exited — press any key to close pane]\x1b[0m\r\n');
   });
@@ -456,10 +479,43 @@ async function createPane(tabId, side) {
   // Build pane state before registering the title-change handler so the
   // closure can write back into the same object.
   const pane = {
-    term, fitAddon, sessionId, unsubData, unsubExit, cwd: '~',
+    term, fitAddon, searchAddon, sessionId, unsubData, unsubExit, cwd: '~',
     projectProfile: null, projectProfileDir: null, _lastCheckedCwd: null,
   };
   tab.panes[side] = pane;
+
+  // ── Wire search bar ────────────────────────────────────────────────────────
+  const searchBarEl   = document.getElementById(elId.searchBar(tabId, side));
+  const searchInputEl = document.getElementById(elId.searchInput(tabId, side));
+
+  searchInputEl.addEventListener('input', () => {
+    if (searchInputEl.value) {
+      pane.searchAddon.findNext(searchInputEl.value, { incremental: true });
+    } else {
+      pane.term.clearSelection();
+    }
+  });
+
+  searchInputEl.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter') {
+      ev.preventDefault();
+      if (ev.shiftKey) pane.searchAddon.findPrevious(searchInputEl.value);
+      else             pane.searchAddon.findNext(searchInputEl.value);
+    } else if (ev.key === 'Escape') {
+      ev.preventDefault();
+      closeSearch(tabId, side);
+    }
+  });
+
+  searchBarEl.querySelectorAll('.search-btn').forEach(btn => {
+    btn.addEventListener('mousedown', (ev) => {
+      ev.preventDefault(); // keep focus on the input
+      const dir = btn.dataset.dir;
+      if (dir === 'next')  pane.searchAddon.findNext(searchInputEl.value);
+      if (dir === 'prev')  pane.searchAddon.findPrevious(searchInputEl.value);
+      if (dir === 'close') closeSearch(tabId, side);
+    });
+  });
 
   term.onTitleChange((title) => {
     if (!title) return;
@@ -476,6 +532,8 @@ async function createPane(tabId, side) {
   container.addEventListener('mousedown', () => {
     if (state.activeTabId === tabId) setActivePaneFocus(tabId, side);
   });
+
+  container.addEventListener('contextmenu', (e) => openContextMenu(e, pane));
 }
 
 // ── Pane destruction ──────────────────────────────────────────────────────────
@@ -626,6 +684,19 @@ function initDividerDrag(tabId) {
 function handleGlobalKeydown(e) {
   const { ctrlKey, shiftKey, key } = e;
 
+  // ── Search bar is focused: let it handle its own keys ────────────────────────
+  if (document.activeElement?.closest('.pane-search-bar')) {
+    // Ctrl+ shortcuts must not fire while typing a search query
+    if (ctrlKey) { e.preventDefault(); e.stopPropagation(); }
+    return;
+  }
+
+  // ── Context menu open: Escape closes it ──────────────────────────────────────
+  if (!document.getElementById('context-menu').classList.contains('hidden')) {
+    if (key === 'Escape') { e.preventDefault(); closeContextMenu(); }
+    return;
+  }
+
   // ── Palette is open: only Escape and text-editing ctrl shortcuts pass through ─
   if (palette.isOpen) {
     if (key === 'Escape') {
@@ -647,10 +718,10 @@ function handleGlobalKeydown(e) {
     return;
   }
 
-  // Ctrl+T — new tab
+  // Ctrl+T — new tab (inherit CWD from active pane if known)
   if (ctrlKey && !shiftKey && key === 't') {
     e.preventDefault(); e.stopPropagation();
-    createTab();
+    createTab(getActivePaneCwd());
     return;
   }
 
@@ -721,6 +792,23 @@ function handleGlobalKeydown(e) {
     return;
   }
 
+  // Ctrl+F — open in-pane search
+  if (ctrlKey && !shiftKey && key === 'f') {
+    e.preventDefault(); e.stopPropagation();
+    if (activeTab) openSearch(state.activeTabId, activeTab.activePaneId);
+    return;
+  }
+
+  // Ctrl+L — clear screen (send form-feed to PTY; bash readline handles the rest)
+  if (ctrlKey && !shiftKey && key === 'l') {
+    e.preventDefault(); e.stopPropagation();
+    if (activeTab) {
+      const pane = activeTab.panes[activeTab.activePaneId];
+      if (pane) window.electronAPI.writeToShell(pane.sessionId, '\x0c');
+    }
+    return;
+  }
+
   // Ctrl+= or Ctrl++ — increase font size
   if (ctrlKey && !shiftKey && (key === '=' || key === '+')) {
     e.preventDefault(); e.stopPropagation();
@@ -748,6 +836,53 @@ function handleGlobalKeydown(e) {
     cycleOpacity();
     return;
   }
+}
+
+// ── In-pane search ────────────────────────────────────────────────────────────
+
+function openSearch(tabId, side) {
+  const tab  = state.tabs.find(t => t.id === tabId);
+  const pane = tab?.panes[side];
+  if (!pane) return;
+
+  const barEl   = document.getElementById(elId.searchBar(tabId, side));
+  const inputEl = document.getElementById(elId.searchInput(tabId, side));
+  if (!barEl || !inputEl) return;
+
+  barEl.classList.remove('hidden');
+  inputEl.select();
+  inputEl.focus();
+
+  // Refit so the terminal shrinks to make room for the bar
+  pane.fitAddon.fit();
+  window.electronAPI.resizeShell(pane.sessionId, pane.term.cols, pane.term.rows);
+}
+
+function closeSearch(tabId, side) {
+  const tab  = state.tabs.find(t => t.id === tabId);
+  const pane = tab?.panes[side];
+  const barEl = document.getElementById(elId.searchBar(tabId, side));
+  if (!barEl || barEl.classList.contains('hidden')) return;
+
+  barEl.classList.add('hidden');
+  pane?.term.clearSelection();
+
+  // Refit to reclaim the bar's height
+  if (pane) {
+    pane.fitAddon.fit();
+    window.electronAPI.resizeShell(pane.sessionId, pane.term.cols, pane.term.rows);
+    pane.term.focus();
+  }
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+/** Returns the active pane's cwd, or null if it hasn't reported one yet. */
+function getActivePaneCwd() {
+  const tab  = state.tabs.find(t => t.id === state.activeTabId);
+  const pane = tab?.panes[tab.activePaneId] || tab?.panes.left;
+  const cwd  = pane?.cwd;
+  return (cwd && cwd !== '~') ? cwd : null;
 }
 
 // ── Broadcast mode ────────────────────────────────────────────────────────────
@@ -1018,6 +1153,84 @@ async function executeAndClose(entry) {
   }
 }
 
+// ── Right-click context menu ──────────────────────────────────────────────────
+
+let _ctxMenuPane = null;
+
+function openContextMenu(e, pane) {
+  e.preventDefault();
+  _ctxMenuPane = pane;
+
+  const menu     = document.getElementById('context-menu');
+  const copyItem = document.getElementById('ctx-copy');
+  copyItem.classList.toggle('disabled', !pane.term.getSelection());
+
+  // Reveal off-screen first so offsetWidth/Height are real, then clamp into view
+  menu.style.left = '-9999px';
+  menu.style.top  = '-9999px';
+  menu.classList.remove('hidden');
+
+  const x = Math.min(e.clientX, window.innerWidth  - menu.offsetWidth  - 4);
+  const y = Math.min(e.clientY, window.innerHeight - menu.offsetHeight - 4);
+  menu.style.left = Math.max(0, x) + 'px';
+  menu.style.top  = Math.max(0, y) + 'px';
+}
+
+function closeContextMenu() {
+  document.getElementById('context-menu').classList.add('hidden');
+  _ctxMenuPane = null;
+}
+
+function initContextMenu() {
+  document.getElementById('ctx-copy').addEventListener('click', () => {
+    if (!_ctxMenuPane) return;
+    const sel = _ctxMenuPane.term.getSelection();
+    if (sel) navigator.clipboard.writeText(sel).catch(() => {});
+    closeContextMenu();
+  });
+
+  document.getElementById('ctx-paste').addEventListener('click', () => {
+    if (!_ctxMenuPane) return;
+    navigator.clipboard.readText().then(text => {
+      if (text) window.electronAPI.writeToShell(_ctxMenuPane.sessionId, text);
+    }).catch(() => {});
+    closeContextMenu();
+  });
+
+  document.getElementById('ctx-clear').addEventListener('click', () => {
+    if (!_ctxMenuPane) return;
+    window.electronAPI.writeToShell(_ctxMenuPane.sessionId, '\x0c');
+    closeContextMenu();
+  });
+
+  // Close on any click outside the menu
+  document.addEventListener('mousedown', (e) => {
+    if (!document.getElementById('context-menu').classList.contains('hidden')) {
+      if (!e.target.closest('#context-menu')) closeContextMenu();
+    }
+  }, true);
+}
+
+// ── Toast notifications ───────────────────────────────────────────────────────
+
+const TOAST_ICONS = { success: '✓', error: '✕', info: '●' };
+
+function showToast(message, type = 'info', duration = 3500) {
+  const container = document.getElementById('toast-container');
+  const toast = document.createElement('div');
+  toast.className = `toast toast-${type}`;
+  toast.innerHTML =
+    `<span class="toast-icon">${TOAST_ICONS[type] ?? TOAST_ICONS.info}</span>` +
+    `<span>${message}</span>`;
+  container.appendChild(toast);
+
+  const remove = () => {
+    toast.classList.add('toast-leaving');
+    toast.addEventListener('animationend', () => toast.remove(), { once: true });
+  };
+  setTimeout(remove, duration);
+}
+
 // ── Team snippet sync ─────────────────────────────────────────────────────────
 
 async function syncTeamSnippets() {
@@ -1027,7 +1240,12 @@ async function syncTeamSnippets() {
     const result = await window.electronAPI.syncTeamSnippets(state.config.teamSnippetsRepo);
     if (result.ok) {
       state.teamSnippets = result.snippets;
+      showToast(`Synced ${result.snippets.length} team snippet${result.snippets.length !== 1 ? 's' : ''}`, 'success');
+    } else {
+      showToast(`Snippet sync failed: ${result.error || 'unknown error'}`, 'error', 5000);
     }
+  } catch (err) {
+    showToast(`Snippet sync failed: ${err.message}`, 'error', 5000);
   } finally {
     btn.classList.remove('syncing');
   }

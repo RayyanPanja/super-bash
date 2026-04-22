@@ -96,6 +96,17 @@
   <script src="../node_modules/xterm-addon-web-links/lib/xterm-addon-web-links.js"></script>
   <script src="../node_modules/xterm-addon-search/lib/xterm-addon-search.js"></script>
 
+  <!-- ── Right-click context menu ─────────────────────────────────────── -->
+  <div id="context-menu" class="hidden">
+    <div class="ctx-item" id="ctx-copy">Copy</div>
+    <div class="ctx-item" id="ctx-paste">Paste</div>
+    <div class="ctx-sep"></div>
+    <div class="ctx-item" id="ctx-clear">Clear</div>
+  </div>
+
+  <!-- ── Toast notifications ──────────────────────────────────────────── -->
+  <div id="toast-container"></div>
+
   <script src="terminal.js"></script>
 </body>
 </html>

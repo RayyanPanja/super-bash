@@ -78,16 +78,24 @@ const XTERM_THEME = {
 
 async function checkProjectProfile(pane, newCwd) {
   if (pane._lastCheckedCwd === newCwd) return;
+
+  // Skip the IPC call if we already know this dir has no profile and there is
+  // currently no active profile to unload — avoids a redundant round-trip every
+  // time the user returns to a directory that has no .superbash file.
+  if (pane.projectProfile === null && pane._lastNullCwd === newCwd) return;
+
   pane._lastCheckedCwd = newCwd;
 
   const profile = await window.electronAPI.checkProfile(newCwd);
 
   if (profile) {
+    pane._lastNullCwd = null; // this dir has a profile — clear any null cache
     if (pane.projectProfileDir === newCwd) return; // already loaded for this dir
     if (pane.projectProfile) unloadProfile(pane);
     loadProfile(pane, profile, newCwd);
-  } else if (pane.projectProfile) {
-    unloadProfile(pane);
+  } else {
+    pane._lastNullCwd = newCwd; // remember: this dir returned no profile
+    if (pane.projectProfile) unloadProfile(pane);
   }
 }
 
@@ -129,6 +137,7 @@ function unloadProfile(pane) {
 // ── Git status bar ────────────────────────────────────────────────────────────
 
 let _gitRefreshBusy = false;
+let _gitBarInterval = null;
 
 function initGitBar() {
   document.getElementById('git-branch').addEventListener('click', () =>
@@ -143,7 +152,7 @@ function initGitBar() {
   document.getElementById('git-btn-push').addEventListener('click', () =>
     writeToActivePane('git push\n')
   );
-  setInterval(refreshGitBar, 3000);
+  _gitBarInterval = setInterval(refreshGitBar, 3000);
 }
 
 function writeToActivePane(cmd) {
@@ -217,6 +226,8 @@ async function init() {
   document.getElementById('btn-close').addEventListener('click', () =>
     window.electronAPI.closeWindow()
   );
+  document.getElementById('btn-settings').addEventListener('click', openSettings);
+  document.getElementById('btn-help').addEventListener('click', () => window.electronAPI.openHelp());
   document.getElementById('btn-new-tab').addEventListener('click', () => createTab());
   document.getElementById('btn-broadcast').addEventListener('click', toggleBroadcast);
 
@@ -228,6 +239,7 @@ async function init() {
     syncBtn.style.display = 'none';
   }
 
+  initSettings();
   initPalette();
   initGitBar();
   initContextMenu();
@@ -245,6 +257,9 @@ async function init() {
   document.addEventListener('keydown', handleGlobalKeydown, { capture: true });
 
   window.addEventListener('resize', () => fitAll());
+  window.addEventListener('beforeunload', () => {
+    if (_gitBarInterval) clearInterval(_gitBarInterval);
+  });
 
   const restored = await tryRestoreSession();
   if (!restored) {
@@ -256,9 +271,12 @@ async function init() {
 
 // ── Session persistence ───────────────────────────────────────────────────────
 
+const SESSION_VERSION = 1;
+
 async function saveSession() {
   if (!state.config || state.config.restoreSession === false) return;
   const data = {
+    version: SESSION_VERSION,
     activeTabIndex: Math.max(0, state.tabs.findIndex(t => t.id === state.activeTabId)),
     tabs: state.tabs.map(tab => ({
       cwd:        tab.panes.left?.cwd  || null,
@@ -276,6 +294,10 @@ async function tryRestoreSession() {
 
   const session = await window.electronAPI.loadSession();
   if (!session || !Array.isArray(session.tabs) || session.tabs.length === 0) return false;
+  if (session.version !== SESSION_VERSION) {
+    console.warn(`session.json version mismatch (got ${session.version}, expected ${SESSION_VERSION}) — discarding`);
+    return false;
+  }
 
   for (const saved of session.tabs) {
     const tabId = await createTab(saved.cwd || null);
@@ -451,6 +473,7 @@ async function createPane(tabId, side) {
     cursorBlink: true,
     copyOnSelect: true,
     bellStyle: 'visual',
+    windowsMode: navigator.platform.startsWith('Win'),
     allowTransparency: false,
     allowProposedApi: true,
   });
@@ -517,7 +540,8 @@ async function createPane(tabId, side) {
   // closure can write back into the same object.
   const pane = {
     term, fitAddon, searchAddon, sessionId, unsubData, unsubExit, cwd: '~',
-    projectProfile: null, projectProfileDir: null, _lastCheckedCwd: null,
+    projectProfile: null, projectProfileDir: null, _lastCheckedCwd: null, _lastNullCwd: null,
+    _broadcastQueue: [], _broadcastDraining: false,
   };
   tab.panes[side] = pane;
 
@@ -842,6 +866,16 @@ function handleGlobalKeydown(e) {
     return;
   }
 
+  // ── Settings open: Escape closes it, other shortcuts blocked ────────────────
+  if (!document.getElementById('settings-overlay').classList.contains('hidden')) {
+    if (key === 'Escape') { e.preventDefault(); closeSettings(); }
+    // Let text-editing shortcuts through (cut/copy/paste/undo/select-all)
+    if (ctrlKey && !['a', 'c', 'v', 'x', 'z'].includes(key.toLowerCase())) {
+      e.preventDefault(); e.stopPropagation();
+    }
+    return;
+  }
+
   // ── Context menu open: Escape closes it ──────────────────────────────────────
   if (!document.getElementById('context-menu').classList.contains('hidden')) {
     if (key === 'Escape') { e.preventDefault(); closeContextMenu(); }
@@ -866,6 +900,13 @@ function handleGlobalKeydown(e) {
   if (ctrlKey && !shiftKey && key === 'p') {
     e.preventDefault(); e.stopPropagation();
     openPalette();
+    return;
+  }
+
+  // Ctrl+, — open settings
+  if (ctrlKey && !shiftKey && key === ',') {
+    e.preventDefault(); e.stopPropagation();
+    openSettings();
     return;
   }
 
@@ -1041,8 +1082,20 @@ function getActivePaneCwd() {
 function broadcastToOthers(excludeSessionId, data) {
   for (const tab of state.tabs) {
     for (const pane of Object.values(tab.panes)) {
-      if (pane && pane.sessionId !== excludeSessionId) {
-        window.electronAPI.writeToShell(pane.sessionId, data);
+      if (!pane || pane.sessionId === excludeSessionId) continue;
+
+      if (!pane._broadcastQueue) pane._broadcastQueue = [];
+      pane._broadcastQueue.push(data);
+
+      if (!pane._broadcastDraining) {
+        pane._broadcastDraining = true;
+        setImmediate(() => {
+          if (!pane._broadcastQueue) return;
+          const payload = pane._broadcastQueue.join('');
+          pane._broadcastQueue = [];
+          pane._broadcastDraining = false;
+          if (payload) window.electronAPI.writeToShell(pane.sessionId, payload);
+        });
       }
     }
   }
@@ -1302,6 +1355,105 @@ async function executeAndClose(entry) {
       }
     }
   }
+}
+
+// ── Settings panel ───────────────────────────────────────────────────────────
+
+function openSettings() {
+  // Populate fields from current live state / config
+  const fs = document.getElementById('settings-font-size');
+  const fv = document.getElementById('settings-font-size-val');
+  fs.value = state.fontSize;
+  fv.textContent = state.fontSize;
+
+  document.getElementById('settings-font-family').value = state.config.fontFamily || '';
+  document.getElementById('settings-shell-path').value  = state.config.shellPath  || '';
+  document.getElementById('settings-opacity').value     = state.opacityIndex;
+  document.getElementById('settings-restore-session').checked =
+    state.config.restoreSession !== false;
+
+  document.getElementById('settings-overlay').classList.remove('hidden');
+}
+
+function closeSettings() {
+  document.getElementById('settings-overlay').classList.add('hidden');
+  // Return focus to the terminal
+  const tab = state.tabs.find(t => t.id === state.activeTabId);
+  if (tab) tab.panes[tab.activePaneId]?.term.focus();
+}
+
+async function applyAndSaveSettings() {
+  const fontSize      = parseInt(document.getElementById('settings-font-size').value, 10);
+  const fontFamily    = document.getElementById('settings-font-family').value.trim() || null;
+  const shellPath     = document.getElementById('settings-shell-path').value.trim()  || null;
+  const opacityIdx    = parseInt(document.getElementById('settings-opacity').value, 10);
+  const restoreSession = document.getElementById('settings-restore-session').checked;
+
+  // Apply font size live
+  if (fontSize !== state.fontSize) {
+    state.fontSize = fontSize;
+    for (const tab of state.tabs) {
+      for (const pane of Object.values(tab.panes)) {
+        if (pane) pane.term.options.fontSize = fontSize;
+      }
+    }
+    fitAll();
+  }
+
+  // Apply font family live
+  if (fontFamily && fontFamily !== state.config.fontFamily) {
+    state.config.fontFamily = fontFamily;
+    document.documentElement.style.setProperty('--font-family', fontFamily);
+    for (const tab of state.tabs) {
+      for (const pane of Object.values(tab.panes)) {
+        if (pane) pane.term.options.fontFamily = fontFamily;
+      }
+    }
+    fitAll();
+  }
+
+  // Apply opacity live
+  if (opacityIdx !== state.opacityIndex) {
+    state.opacityIndex = opacityIdx;
+    window.electronAPI.setOpacity(OPACITY_LEVELS[opacityIdx]);
+  }
+
+  // Update config cache for future panes
+  state.config.shellPath      = shellPath;
+  state.config.restoreSession = restoreSession;
+
+  // Persist to personal.json
+  const overrides = {
+    fontSize,
+    fontFamily:      fontFamily    || undefined,
+    shellPath:       shellPath     || undefined,
+    restoreSession,
+  };
+  const result = await window.electronAPI.saveSettings(overrides);
+  if (result.ok) {
+    showToast('Settings saved', 'success');
+  } else {
+    showToast(`Failed to save settings: ${result.error}`, 'error', 5000);
+  }
+
+  closeSettings();
+}
+
+function initSettings() {
+  document.getElementById('settings-close').addEventListener('click', closeSettings);
+  document.getElementById('settings-save').addEventListener('click', applyAndSaveSettings);
+
+  // Live font size preview
+  const fontSizeInput = document.getElementById('settings-font-size');
+  const fontSizeVal   = document.getElementById('settings-font-size-val');
+  fontSizeInput.addEventListener('input', () => {
+    fontSizeVal.textContent = fontSizeInput.value;
+  });
+
+  // Close on backdrop click
+  document.getElementById('settings-overlay').addEventListener('mousedown', (e) => {
+    if (e.target === document.getElementById('settings-overlay')) closeSettings();
+  });
 }
 
 // ── Right-click context menu ──────────────────────────────────────────────────

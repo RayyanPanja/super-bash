@@ -55,6 +55,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener(channel, handler);
   },
 
+  // ── Per-project profile ────────────────────────────────────────────────────
+  /** Read .superbash from dirPath — returns parsed object or null if absent. */
+  checkProfile: (dirPath) => ipcRenderer.invoke('profile:check', dirPath),
+
   // ── Session persistence ────────────────────────────────────────────────────
   /** Load saved session from ~/.superbash/session.json — returns null if absent. */
   loadSession: () => ipcRenderer.invoke('session:load'),

@@ -57,6 +57,22 @@ app.on('activate', () => {
 
 ipcMain.handle('config:load', () => ConfigLoader.load());
 
+// ── IPC: Per-project profile ──────────────────────────────────────────────────
+
+ipcMain.handle('profile:check', (_event, dirPath) => {
+  try {
+    // Git Bash on Windows reports paths as /c/Users/… — convert to C:\Users\…
+    let resolved = dirPath;
+    if (process.platform === 'win32' && /^\/[a-zA-Z]\//.test(dirPath)) {
+      resolved = dirPath[1].toUpperCase() + ':' + dirPath.slice(2).replace(/\//g, path.sep);
+    }
+    const raw = fs.readFileSync(path.join(resolved, '.superbash'), 'utf8');
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+});
+
 // ── IPC: Session persistence ──────────────────────────────────────────────────
 
 const SESSION_PATH = path.join(os.homedir(), '.superbash', 'session.json');

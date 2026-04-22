@@ -1,0 +1,19 @@
+{
+  "profile": "node",
+  "aliases": {
+    "ni":  "npm install",
+    "nrd": "npm run dev",
+    "nrb": "npm run build",
+    "nrt": "npm run test",
+    "nrs": "npm run start",
+    "yi":  "yarn install",
+    "ya":  "yarn add",
+    "yd":  "yarn dev",
+    "yb":  "yarn build",
+    "yt":  "yarn test"
+  },
+  "env": {
+    "NODE_ENV": "development"
+  },
+  "startupMessage": "Node.js project loaded"
+}

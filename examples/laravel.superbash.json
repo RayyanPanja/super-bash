@@ -1,0 +1,15 @@
+{
+  "profile": "laravel",
+  "aliases": {
+    "pa":   "php artisan",
+    "pam":  "php artisan migrate",
+    "pamf": "php artisan migrate:fresh",
+    "pams": "php artisan migrate --seed",
+    "nrd":  "npm run dev",
+    "nrb":  "npm run build"
+  },
+  "env": {
+    "APP_ENV": "local"
+  },
+  "startupMessage": "Laravel project loaded"
+}

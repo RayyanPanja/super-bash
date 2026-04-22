@@ -66,6 +66,58 @@ const XTERM_THEME = {
   brightCyan:     '#56b6c2', brightWhite:  '#ffffff',
 };
 
+// ── Per-project profile ───────────────────────────────────────────────────────
+
+async function checkProjectProfile(pane, newCwd) {
+  if (pane._lastCheckedCwd === newCwd) return;
+  pane._lastCheckedCwd = newCwd;
+
+  const profile = await window.electronAPI.checkProfile(newCwd);
+
+  if (profile) {
+    if (pane.projectProfileDir === newCwd) return; // already loaded for this dir
+    if (pane.projectProfile) unloadProfile(pane);
+    loadProfile(pane, profile, newCwd);
+  } else if (pane.projectProfile) {
+    unloadProfile(pane);
+  }
+}
+
+function loadProfile(pane, profile, dir) {
+  pane.projectProfile    = profile;
+  pane.projectProfileDir = dir;
+
+  const cmds = [];
+  for (const [k, v] of Object.entries(profile.aliases || {})) {
+    cmds.push(`alias ${k}='${v.replace(/'/g, "'\\''")}'`);
+  }
+  for (const [k, v] of Object.entries(profile.env || {})) {
+    cmds.push(`export ${k}='${v.replace(/'/g, "'\\''")}'`);
+  }
+  if (profile.startupMessage) {
+    const msg = profile.startupMessage.replace(/'/g, "'\\''");
+    cmds.push(`printf '\\033[38;2;240;165;0m[Super Bash] ${msg}\\033[0m\\n'`);
+  }
+  if (cmds.length > 0) {
+    window.electronAPI.writeToShell(pane.sessionId, cmds.join('; ') + '\n');
+  }
+}
+
+function unloadProfile(pane) {
+  const profile = pane.projectProfile;
+  pane.projectProfile    = null;
+  pane.projectProfileDir = null;
+
+  const cmds = [];
+  const aliasNames = Object.keys(profile.aliases || {});
+  const envNames   = Object.keys(profile.env   || {});
+  if (aliasNames.length > 0) cmds.push(`unalias ${aliasNames.join(' ')}`);
+  if (envNames.length   > 0) cmds.push(`unset ${envNames.join(' ')}`);
+  if (cmds.length > 0) {
+    window.electronAPI.writeToShell(pane.sessionId, cmds.join('; ') + '\n');
+  }
+}
+
 // ── Initialization ────────────────────────────────────────────────────────────
 
 async function init() {
@@ -306,7 +358,10 @@ async function createPane(tabId, side) {
 
   // Build pane state before registering the title-change handler so the
   // closure can write back into the same object.
-  const pane = { term, fitAddon, sessionId, unsubData, unsubExit, cwd: '~' };
+  const pane = {
+    term, fitAddon, sessionId, unsubData, unsubExit, cwd: '~',
+    projectProfile: null, projectProfileDir: null, _lastCheckedCwd: null,
+  };
   tab.panes[side] = pane;
 
   term.onTitleChange((title) => {
@@ -317,6 +372,7 @@ async function createPane(tabId, side) {
     if (state.activeTabId === tabId && tab.activePaneId === side) {
       updateTabLabel(tabId);
     }
+    checkProjectProfile(pane, title);
   });
 
   container.addEventListener('mousedown', () => {

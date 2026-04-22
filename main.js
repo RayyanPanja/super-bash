@@ -111,7 +111,7 @@ function resolveShellPath(shellPath) {
 
 ipcMain.handle('profile:check', (_event, dirPath) => {
   try {
-    let resolved = resolveShellPath(dirPath);
+    const resolved = resolveShellPath(dirPath);
     const raw = fs.readFileSync(path.join(resolved, '.superbash'), 'utf8');
     return JSON.parse(raw);
   } catch {

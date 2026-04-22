@@ -7,16 +7,18 @@
  *   - Handle IPC messages from the renderer (config, shell ops, window controls)
  */
 
-const { app, BrowserWindow, ipcMain, screen, globalShortcut } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, globalShortcut, shell, Tray, Menu, nativeImage } = require('electron');
 const path   = require('path');
 const os     = require('os');
 const fs     = require('fs');
 const { exec } = require('child_process');
 const PtyManager   = require('./shell/ptyManager');
 const ConfigLoader = require('./config/configLoader');
+const { resolveShellPath, expandHome, readTeamSnippets, parseGitStatus } = require('./shell/utils');
 const { autoUpdater } = require('electron-updater');
 
 let mainWindow;
+let tray = null;
 const ptyManager = new PtyManager();
 
 // ── Window creation ──────────────────────────────────────────────────────────
@@ -40,6 +42,29 @@ function createWindow() {
   });
 
   mainWindow.loadFile('renderer/index.html');
+
+  // Hide to tray instead of closing
+  mainWindow.on('close', (e) => {
+    if (!app.isQuitting) {
+      e.preventDefault();
+      mainWindow.hide();
+    }
+  });
+}
+
+// ── Tray ─────────────────────────────────────────────────────────────────────
+
+function createTray() {
+  const iconPath = path.join(__dirname, 'assets', 'tray.png');
+  const icon = nativeImage.createFromPath(iconPath);
+  tray = new Tray(icon.isEmpty() ? nativeImage.createEmpty() : icon);
+  tray.setToolTip('Super Bash');
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: 'Show', click: () => { mainWindow.show(); mainWindow.focus(); } },
+    { type: 'separator' },
+    { label: 'Quit', click: () => { app.isQuitting = true; app.quit(); } },
+  ]));
+  tray.on('double-click', () => { mainWindow.show(); mainWindow.focus(); });
 }
 
 // ── App lifecycle ────────────────────────────────────────────────────────────
@@ -61,6 +86,8 @@ app.whenReady().then(() => {
     });
   }
 
+  createTray();
+
   // Ctrl+` toggles the window — works system-wide even when the app is hidden
   globalShortcut.register('CommandOrControl+`', () => {
     if (!mainWindow) return;
@@ -78,8 +105,12 @@ app.on('will-quit', () => {
 });
 
 app.on('window-all-closed', () => {
-  ptyManager.destroyAll();
-  if (process.platform !== 'darwin') app.quit();
+  // With tray support the window is hidden, not destroyed — only quit when
+  // the user explicitly chooses Quit from the tray menu (app.isQuitting = true).
+  if (app.isQuitting) {
+    ptyManager.destroyAll();
+    if (process.platform !== 'darwin') app.quit();
+  }
 });
 
 app.on('activate', () => {
@@ -91,22 +122,6 @@ app.on('activate', () => {
 ipcMain.handle('config:load', () => ConfigLoader.load());
 
 // ── IPC: Team snippets ────────────────────────────────────────────────────────
-
-/** Expand a leading ~ to the user's home directory. */
-function expandHome(p) {
-  if (!p) return p;
-  return p.startsWith('~') ? path.join(os.homedir(), p.slice(1)) : p;
-}
-
-/** Read and parse teamSnippetsRepo file; returns [] on any error. */
-function readTeamSnippets(filePath) {
-  try {
-    const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-    return Array.isArray(data.snippets) ? data.snippets : [];
-  } catch {
-    return [];
-  }
-}
 
 ipcMain.handle('snippets:load-team', (_event, rawPath) => {
   return readTeamSnippets(expandHome(rawPath));
@@ -128,16 +143,6 @@ ipcMain.handle('snippets:sync', async (_event, rawPath) => {
 
   return { ok: true, snippets: readTeamSnippets(filePath) };
 });
-
-// ── Shared helper: Git Bash → native path ────────────────────────────────────
-// Git Bash on Windows reports $PWD as /c/Users/… — Node's fs/exec need C:\Users\…
-
-function resolveShellPath(shellPath) {
-  if (process.platform === 'win32' && /^\/[a-zA-Z]\//.test(shellPath)) {
-    return shellPath[1].toUpperCase() + ':' + shellPath.slice(2).replace(/\//g, path.sep);
-  }
-  return shellPath;
-}
 
 // ── IPC: Per-project profile ──────────────────────────────────────────────────
 
@@ -169,20 +174,7 @@ ipcMain.handle('git:status', async (_event, dirPath) => {
     runGit('git rev-list --left-right --count HEAD...@{upstream}', cwd),
   ]);
 
-  if (!branch) return { isRepo: false };
-
-  const dirty = porcelain
-    ? porcelain.split('\n').filter(l => l.trim()).length
-    : 0;
-
-  let ahead = 0, behind = 0;
-  if (aheadBehind) {
-    const [a, b] = aheadBehind.split(/\s+/).map(Number);
-    ahead  = a || 0;
-    behind = b || 0;
-  }
-
-  return { isRepo: true, branch, dirty, ahead, behind };
+  return parseGitStatus(branch, porcelain, aheadBehind);
 });
 
 // ── IPC: Session persistence ──────────────────────────────────────────────────
@@ -274,3 +266,31 @@ ipcMain.on('window:maximize', () => {
 });
 ipcMain.on('window:close',   () => mainWindow.close());
 ipcMain.on('window:opacity', (_event, opacity) => mainWindow.setOpacity(opacity));
+
+// ── IPC: Settings ────────────────────────────────────────────────────────────
+
+ipcMain.handle('settings:save', (_event, overrides) => {
+  const personalPath = path.join(os.homedir(), '.superbash', 'personal.json');
+  try {
+    const dir = path.dirname(personalPath);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    // Merge incoming overrides into the existing personal.json (preserve other keys)
+    let existing = {};
+    try { existing = JSON.parse(fs.readFileSync(personalPath, 'utf8')); } catch { /* new file */ }
+    const merged = { ...existing, ...overrides };
+    // Remove null/undefined values so unset keys are stripped
+    for (const k of Object.keys(merged)) {
+      if (merged[k] === null || merged[k] === undefined) delete merged[k];
+    }
+    fs.writeFileSync(personalPath, JSON.stringify(merged, null, 2), 'utf8');
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
+// ── IPC: Help ─────────────────────────────────────────────────────────────────
+
+ipcMain.on('help:open', () => {
+  shell.openPath(path.join(__dirname, 'FEATURES.md'));
+});

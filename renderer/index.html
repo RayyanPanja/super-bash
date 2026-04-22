@@ -17,6 +17,8 @@
   <div id="titlebar">
     <div id="app-title">Super Bash</div>
     <div id="window-controls">
+      <button id="btn-settings"       title="Settings (Ctrl+,)">&#x2699;</button>
+      <button id="btn-help"          title="Help — feature reference">&#x3F;</button>
       <button id="btn-sync-snippets" title="Sync team snippets">&#x21BB;</button>
       <button id="btn-broadcast"     title="Broadcast mode (Ctrl+Shift+B)">&#x229B;</button>
       <button id="btn-minimize"      title="Minimize">&#x2212;</button>
@@ -88,6 +90,57 @@
   <script src="../node_modules/xterm-addon-web-links/lib/xterm-addon-web-links.js"></script>
   <script src="../node_modules/xterm-addon-search/lib/xterm-addon-search.js"></script>
   <script src="../node_modules/xterm-addon-webgl/lib/xterm-addon-webgl.js"></script>
+
+  <!-- ── Settings panel ───────────────────────────────────────────────── -->
+  <div id="settings-overlay" class="hidden">
+    <div id="settings-modal">
+      <div id="settings-header">
+        <span id="settings-title">Settings</span>
+        <button id="settings-close" title="Close (Esc)">&#x2715;</button>
+      </div>
+      <div id="settings-body">
+
+        <label class="settings-row">
+          <span class="settings-label">Font Size</span>
+          <div class="settings-control settings-font-size-row">
+            <input type="range" id="settings-font-size" min="8" max="32" step="1" />
+            <span id="settings-font-size-val">14</span>
+          </div>
+        </label>
+
+        <label class="settings-row">
+          <span class="settings-label">Font Family</span>
+          <input type="text" class="settings-text-input" id="settings-font-family"
+            placeholder='"JetBrains Mono", "Courier New", monospace' />
+        </label>
+
+        <label class="settings-row">
+          <span class="settings-label">Shell Path</span>
+          <input type="text" class="settings-text-input" id="settings-shell-path"
+            placeholder="C:/Program Files/Git/bin/bash.exe" />
+        </label>
+
+        <label class="settings-row">
+          <span class="settings-label">Default Opacity</span>
+          <select class="settings-select" id="settings-opacity">
+            <option value="0">100% — fully opaque</option>
+            <option value="1">85% — slightly transparent</option>
+            <option value="2">70% — see-through</option>
+          </select>
+        </label>
+
+        <label class="settings-row settings-row-toggle">
+          <span class="settings-label">Restore Session</span>
+          <input type="checkbox" id="settings-restore-session" />
+        </label>
+
+      </div>
+      <div id="settings-footer">
+        <span class="settings-hint">Changes applied immediately · saved to <code>~/.superbash/personal.json</code></span>
+        <button id="settings-save" class="settings-btn-save">Save</button>
+      </div>
+    </div>
+  </div>
 
   <!-- ── Right-click context menu ─────────────────────────────────────── -->
   <div id="context-menu" class="hidden">

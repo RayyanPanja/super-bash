@@ -29,6 +29,7 @@
   "build": {
     "appId": "com.superbash.app",
     "productName": "Super Bash",
+    "npmRebuild": false,
     "files": [
       "main.js",
       "preload.js",

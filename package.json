@@ -11,11 +11,14 @@
     "test": "jest"
   },
   "dependencies": {
+    "@fontsource/jetbrains-mono": "^5.2.8",
+    "electron-updater": "^6.8.3",
     "node-pty": "^1.0.0",
     "xterm": "4.19.0",
     "xterm-addon-fit": "0.5.0",
+    "xterm-addon-search": "0.8.2",
     "xterm-addon-web-links": "0.6.0",
-    "xterm-addon-search": "0.8.2"
+    "xterm-addon-webgl": "^0.12.0"
   },
   "devDependencies": {
     "electron": "^28.3.0",
@@ -47,6 +50,11 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "saurabh-bansal",
+      "repo": "super-bash"
     }
   }
 }

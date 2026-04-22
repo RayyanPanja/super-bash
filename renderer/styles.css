@@ -13,6 +13,26 @@
   --git-bar-height:    24px;
   --divider-width:     4px;
   --border-radius:     0px;
+  --font-family:       "JetBrains Mono", "Courier New", monospace;
+}
+
+/* ── JetBrains Mono — bundled via @fontsource (no CDN) ──────────────────── */
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('../node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-400-normal.woff2') format('woff2'),
+       url('../node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-400-normal.woff')  format('woff');
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('../node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-500-normal.woff2') format('woff2'),
+       url('../node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-500-normal.woff')  format('woff');
 }
 
 /* ── Reset ────────────────────────────────────────────────────────────────── */
@@ -28,7 +48,7 @@ html, body {
   overflow: hidden;
   background: var(--bg-primary);
   color: var(--text-primary);
-  font-family: 'JetBrains Mono', 'Courier New', monospace;
+  font-family: var(--font-family);
   user-select: none;
 }
 
@@ -120,7 +140,7 @@ html, body {
   border-right: 1px solid #1f1f1f;
   background: transparent;
   color: var(--text-dim);
-  font-family: 'JetBrains Mono', 'Courier New', monospace;
+  font-family: var(--font-family);
   font-size: 11px;
   cursor: pointer;
   flex-shrink: 0;
@@ -146,6 +166,23 @@ html, body {
   text-overflow: ellipsis;
 }
 
+.tab-rename-input {
+  flex: 1 1 0;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--accent);
+  border-radius: 0;
+  color: var(--accent);
+  font-family: var(--font-family);
+  font-size: 11px;
+  font-weight: 500;
+  outline: none;
+  padding: 0 2px;
+  width: 80px;
+  caret-color: var(--accent);
+}
+
 .tab-close {
   opacity: 0;
   font-size: 13px;
@@ -164,6 +201,26 @@ html, body {
   opacity: 1 !important;
   background: rgba(255, 255, 255, 0.1);
   color: var(--text-primary);
+}
+
+/* Tab drag-to-reorder */
+.tab.drag-source {
+  opacity: 0.45;
+}
+
+.tab.drag-over {
+  box-shadow: -2px 0 0 0 var(--accent);
+}
+
+/* Bell flash — brief amber glow when a BEL character fires in any tab */
+@keyframes bell-flash {
+  0%   { background: rgba(240, 165, 0, 0.35); color: var(--accent); }
+  60%  { background: rgba(240, 165, 0, 0.15); }
+  100% { background: transparent; color: inherit; }
+}
+
+.tab.bell-flash {
+  animation: bell-flash 0.6s ease forwards;
 }
 
 /* Activity dot — shown on background tabs that received output */
@@ -375,7 +432,7 @@ html, body {
   border: none;
   outline: none;
   color: var(--text-primary);
-  font-family: 'JetBrains Mono', 'Courier New', monospace;
+  font-family: var(--font-family);
   font-size: 13px;
   caret-color: var(--accent);
   user-select: text;
@@ -588,7 +645,7 @@ html, body {
   border: 1px solid #282828;
   border-radius: 2px;
   color: var(--text-dim);
-  font-family: 'JetBrains Mono', 'Courier New', monospace;
+  font-family: var(--font-family);
   font-size: 10px;
   letter-spacing: 0.04em;
   cursor: pointer;
@@ -655,7 +712,7 @@ html, body {
   border: 1px solid #2a2a2a;
   border-radius: 2px;
   color: var(--text-primary);
-  font-family: 'JetBrains Mono', 'Courier New', monospace;
+  font-family: var(--font-family);
   font-size: 11px;
   padding: 0 6px;
   outline: none;
@@ -719,7 +776,7 @@ html, body {
 
 .ctx-item {
   padding: 6px 16px;
-  font-family: 'JetBrains Mono', 'Courier New', monospace;
+  font-family: var(--font-family);
   font-size: 12px;
   color: var(--text-primary);
   cursor: pointer;
@@ -774,7 +831,7 @@ html, body {
   max-width: 380px;
   padding: 7px 12px;
   border-radius: 4px;
-  font-family: 'JetBrains Mono', 'Courier New', monospace;
+  font-family: var(--font-family);
   font-size: 12px;
   line-height: 1.4;
   border-left: 3px solid var(--accent);

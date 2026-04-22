@@ -9,6 +9,7 @@ const DEFAULT_CONFIG = {
   startupMessage: '',
   shellPath: null,
   fontSize: 14,
+  fontFamily: '"JetBrains Mono", "Courier New", monospace',
   theme: {
     background: '#0d0d0d',
     accent: '#f0a500',

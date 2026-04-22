@@ -4,17 +4,9 @@
   <meta charset="UTF-8" />
   <meta
     http-equiv="Content-Security-Policy"
-    content="default-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self'"
+    content="default-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; script-src 'self'"
   />
   <title>Super Bash</title>
-
-  <!-- JetBrains Mono from Google Fonts (CDN fallback) -->
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link
-    href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap"
-    rel="stylesheet"
-  />
 
   <!-- xterm.js v4 — UMD builds from node_modules (loaded before terminal.js) -->
   <link rel="stylesheet" href="../node_modules/xterm/css/xterm.css" />
@@ -95,6 +87,7 @@
   <script src="../node_modules/xterm-addon-fit/lib/xterm-addon-fit.js"></script>
   <script src="../node_modules/xterm-addon-web-links/lib/xterm-addon-web-links.js"></script>
   <script src="../node_modules/xterm-addon-search/lib/xterm-addon-search.js"></script>
+  <script src="../node_modules/xterm-addon-webgl/lib/xterm-addon-webgl.js"></script>
 
   <!-- ── Right-click context menu ─────────────────────────────────────── -->
   <div id="context-menu" class="hidden">

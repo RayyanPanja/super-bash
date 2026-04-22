@@ -84,4 +84,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   maximizeWindow: () => ipcRenderer.send('window:maximize'),
   closeWindow:    () => ipcRenderer.send('window:close'),
   setOpacity:     (opacity) => ipcRenderer.send('window:opacity', opacity),
+
+  // ── Auto-updater ───────────────────────────────────────────────────────────
+  onUpdaterStatus: (callback) => {
+    const handler = (_event, status) => callback(status);
+    ipcRenderer.on('updater:status', handler);
+    return () => ipcRenderer.removeListener('updater:status', handler);
+  },
 });

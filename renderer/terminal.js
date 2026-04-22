@@ -204,6 +204,9 @@ function updateGitBar(status) {
 async function init() {
   state.config = await window.electronAPI.loadConfig();
   state.fontSize = state.config.fontSize || 14;
+  if (state.config.fontFamily) {
+    document.documentElement.style.setProperty('--font-family', state.config.fontFamily);
+  }
 
   document.getElementById('btn-minimize').addEventListener('click', () =>
     window.electronAPI.minimizeWindow()
@@ -228,6 +231,15 @@ async function init() {
   initPalette();
   initGitBar();
   initContextMenu();
+  initTabDrag();
+
+  window.electronAPI.onUpdaterStatus((status) => {
+    if (status === 'update-available') {
+      showToast('Update available — downloading in background…', 'info');
+    } else if (status === 'update-downloaded') {
+      showToast('Update downloaded — restart to apply.', 'success', 8000);
+    }
+  });
 
   // Capture phase so our shortcuts are handled before xterm sees the keystroke
   document.addEventListener('keydown', handleGlobalKeydown, { capture: true });
@@ -253,6 +265,7 @@ async function saveSession() {
       isSplit:    tab.isSplit,
       rightCwd:   tab.panes.right?.cwd || null,
       activePane: tab.activePaneId,
+      customName: tab.customName || null,
     })),
   };
   await window.electronAPI.saveSession(data);
@@ -266,6 +279,10 @@ async function tryRestoreSession() {
 
   for (const saved of session.tabs) {
     const tabId = await createTab(saved.cwd || null);
+    if (saved.customName) {
+      const tab = state.tabs.find(t => t.id === tabId);
+      if (tab) { tab.customName = saved.customName; updateTabLabel(tabId); }
+    }
     if (saved.isSplit) {
       await openSplit(tabId);
       if (saved.rightCwd) {
@@ -291,6 +308,7 @@ function buildTabDOM(tabId) {
   const btn = document.createElement('button');
   btn.className = 'tab';
   btn.dataset.tabId = tabId;
+  btn.draggable = true;
   btn.innerHTML =
     `<span class="tab-activity-dot" title="New output"></span>` +
     `<span class="tab-cwd">~</span>` +
@@ -300,6 +318,12 @@ function buildTabDOM(tabId) {
     closeTab(tabId);
   });
   btn.addEventListener('click', () => switchTab(tabId));
+
+  btn.querySelector('.tab-cwd').addEventListener('dblclick', (e) => {
+    e.stopPropagation();
+    startTabRename(tabId, btn);
+  });
+
   document.getElementById('tabs-list').appendChild(btn);
 
   // Tab content: left pane + divider + right pane
@@ -420,11 +444,13 @@ async function createPane(tabId, side) {
   const container = document.getElementById(elId.terminal(tabId, side));
 
   const term = new Terminal({
-    fontFamily: '"JetBrains Mono", "Courier New", monospace',
+    fontFamily: state.config.fontFamily,
     fontSize: state.fontSize,
     theme: XTERM_THEME,
     scrollback: 5000,
     cursorBlink: true,
+    copyOnSelect: true,
+    bellStyle: 'visual',
     allowTransparency: false,
     allowProposedApi: true,
   });
@@ -438,6 +464,17 @@ async function createPane(tabId, side) {
   term.loadAddon(searchAddon);
 
   term.open(container);
+
+  // WebGL renderer — enables font ligatures (=>  !=  ->  ===).
+  // Wrapped in try/catch: falls back to the default canvas renderer silently.
+  if (typeof WebglAddon !== 'undefined') {
+    try {
+      const webgl = new WebglAddon.WebglAddon();
+      webgl.onContextLoss(() => webgl.dispose());
+      term.loadAddon(webgl);
+    } catch { /* WebGL unavailable — continue with canvas renderer */ }
+  }
+
   fitAddon.fit();
 
   // Inject PROMPT_COMMAND to track CWD via OSC 0 title changes.
@@ -529,6 +566,15 @@ async function createPane(tabId, side) {
     checkProjectProfile(pane, title);
   });
 
+  term.onBell(() => {
+    const tabBtn = document.querySelector(`.tab[data-tab-id="${tabId}"]`);
+    if (!tabBtn) return;
+    tabBtn.classList.remove('bell-flash');
+    // Force reflow so re-adding the class re-triggers the animation
+    void tabBtn.offsetWidth;
+    tabBtn.classList.add('bell-flash');
+  });
+
   container.addEventListener('mousedown', () => {
     if (state.activeTabId === tabId) setActivePaneFocus(tabId, side);
   });
@@ -608,9 +654,114 @@ function updateTabLabel(tabId) {
   const tab = state.tabs.find(t => t.id === tabId);
   if (!tab) return;
   const pane = tab.panes[tab.activePaneId] || tab.panes.left;
-  const label = cwdLabel(pane?.cwd || '~');
+  const label = tab.customName || cwdLabel(pane?.cwd || '~');
   const btn = document.querySelector(`.tab[data-tab-id="${tabId}"]`);
-  if (btn) btn.querySelector('.tab-cwd').textContent = label;
+  if (!btn) return;
+  const cwdEl = btn.querySelector('.tab-cwd');
+  // Don't overwrite while the user is actively editing
+  if (cwdEl && !btn.querySelector('.tab-rename-input')) cwdEl.textContent = label;
+}
+
+// ── Tab drag-to-reorder ───────────────────────────────────────────────────────
+
+function initTabDrag() {
+  const list = document.getElementById('tabs-list');
+  let dragSrcId = null;
+
+  list.addEventListener('dragstart', (e) => {
+    const tab = e.target.closest('.tab[data-tab-id]');
+    if (!tab) return;
+    dragSrcId = tab.dataset.tabId;
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', dragSrcId);
+    tab.classList.add('drag-source');
+  });
+
+  list.addEventListener('dragend', (e) => {
+    const tab = e.target.closest('.tab[data-tab-id]');
+    if (tab) tab.classList.remove('drag-source');
+    list.querySelectorAll('.tab').forEach(t => t.classList.remove('drag-over'));
+    dragSrcId = null;
+  });
+
+  list.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    const target = e.target.closest('.tab[data-tab-id]');
+    list.querySelectorAll('.tab').forEach(t => t.classList.remove('drag-over'));
+    if (target && target.dataset.tabId !== dragSrcId) target.classList.add('drag-over');
+  });
+
+  list.addEventListener('dragleave', (e) => {
+    const target = e.target.closest('.tab[data-tab-id]');
+    if (target) target.classList.remove('drag-over');
+  });
+
+  list.addEventListener('drop', (e) => {
+    e.preventDefault();
+    const target = e.target.closest('.tab[data-tab-id]');
+    if (!target || !dragSrcId || target.dataset.tabId === dragSrcId) return;
+
+    const dstId = target.dataset.tabId;
+
+    // Reorder state.tabs array
+    const srcIdx = state.tabs.findIndex(t => t.id === dragSrcId);
+    const dstIdx = state.tabs.findIndex(t => t.id === dstId);
+    if (srcIdx === -1 || dstIdx === -1) return;
+    const [moved] = state.tabs.splice(srcIdx, 1);
+    state.tabs.splice(dstIdx, 0, moved);
+
+    // Reorder DOM to match
+    const srcBtn = list.querySelector(`.tab[data-tab-id="${dragSrcId}"]`);
+    if (srcBtn) {
+      if (srcIdx < dstIdx) target.after(srcBtn);
+      else                 target.before(srcBtn);
+    }
+
+    target.classList.remove('drag-over');
+    saveSession();
+  });
+}
+
+function startTabRename(tabId, btn) {
+  const tab    = state.tabs.find(t => t.id === tabId);
+  const cwdEl  = btn.querySelector('.tab-cwd');
+  if (!tab || !cwdEl) return;
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'tab-rename-input';
+  input.draggable = false;
+  input.value = tab.customName || cwdEl.textContent;
+  input.maxLength = 40;
+
+  cwdEl.replaceWith(input);
+  input.select();
+
+  const commit = () => {
+    const name = input.value.trim();
+    tab.customName = name || null;
+    const restored = document.createElement('span');
+    restored.className = 'tab-cwd';
+    input.replaceWith(restored);
+    updateTabLabel(tabId);
+    saveSession();
+  };
+
+  const cancel = () => {
+    const restored = document.createElement('span');
+    restored.className = 'tab-cwd';
+    input.replaceWith(restored);
+    updateTabLabel(tabId);
+  };
+
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter')  { e.preventDefault(); commit(); }
+    if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+    e.stopPropagation(); // prevent global shortcuts during rename
+  });
+  input.addEventListener('blur', commit);
+  input.addEventListener('click', (e) => e.stopPropagation()); // don't trigger switchTab
 }
 
 // ── Fit ───────────────────────────────────────────────────────────────────────

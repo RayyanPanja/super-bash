@@ -1,0 +1,51 @@
+{
+  "name": "super-bash",
+  "version": "1.0.0",
+  "description": "A Git Bash replacement with split panes, gold-on-black theme, and team config",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder",
+    "rebuild": "electron-rebuild -f -w node-pty",
+    "test": "jest"
+  },
+  "dependencies": {
+    "electron": "^28.3.0",
+    "node-pty": "^1.0.0",
+    "xterm": "4.19.0",
+    "xterm-addon-fit": "0.5.0",
+    "xterm-addon-web-links": "0.6.0",
+    "xterm-addon-search": "0.8.2"
+  },
+  "devDependencies": {
+    "electron-builder": "^24.9.0",
+    "electron-rebuild": "^3.2.9",
+    "jest": "^29.7.0"
+  },
+  "build": {
+    "appId": "com.superbash.app",
+    "productName": "Super Bash",
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer/**/*",
+      "shell/**/*",
+      "config/**/*",
+      "assets/**/*",
+      "team.config.json",
+      "node_modules/**/*"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.ico"
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "assets/icon.icns"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  }
+}

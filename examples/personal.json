@@ -1,0 +1,18 @@
+{
+  "_comment": "Copy this to ~/.superbash/personal.json and customize. Personal settings override team.config.json.",
+  "shellPath": null,
+  "fontSize": 14,
+  "startupMessage": "",
+  "theme": {
+    "background": "#0d0d0d",
+    "accent": "#f0a500"
+  },
+  "aliases": {
+    "ll":   "ls -la --color=auto",
+    "..":   "cd ..",
+    "...":  "cd ../.."
+  },
+  "env": {
+    "EDITOR": "vim"
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "_comment": "Super Bash — team-shared config. Commit this file. Personal overrides go in ~/.superbash/personal.json.",
+  "startupMessage": "Welcome to Super Bash — team workspace. Type 'help-team' for project shortcuts.",
+  "aliases": {
+    "gs":        "git status",
+    "gp":        "git push",
+    "gl":        "git pull",
+    "glog":      "git log --oneline --graph --decorate -20",
+    "gco":       "git checkout",
+    "nrd":       "npm run dev",
+    "nrt":       "npm run test",
+    "help-team": "echo 'Aliases: gs gp gl glog gco nrd nrt'"
+  },
+  "env": {
+    "SUPER_BASH": "1",
+    "FORCE_COLOR": "1"
+  }
+}

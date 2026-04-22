@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta
+    http-equiv="Content-Security-Policy"
+    content="default-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self'"
+  />
+  <title>Super Bash</title>
+
+  <!-- JetBrains Mono from Google Fonts (CDN fallback) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap"
+    rel="stylesheet"
+  />
+
+  <!-- xterm.js v4 — UMD builds from node_modules (loaded before terminal.js) -->
+  <link rel="stylesheet" href="../node_modules/xterm/css/xterm.css" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- ── Custom titlebar (frameless window) ──────────────────────────── -->
+  <div id="titlebar">
+    <div id="app-title">Super Bash</div>
+    <div id="window-controls">
+      <button id="btn-minimize" title="Minimize">&#x2212;</button>
+      <button id="btn-maximize" title="Maximize">&#x25A1;</button>
+      <button id="btn-close"    title="Close">&#x2715;</button>
+    </div>
+  </div>
+
+  <!-- ── Split terminal area ─────────────────────────────────────────── -->
+  <div id="terminal-container">
+
+    <!-- Left pane (always visible) -->
+    <div class="terminal-pane active" id="pane-left">
+      <div class="pane-titlebar">
+        <span class="pane-cwd" id="cwd-left">~</span>
+      </div>
+      <div class="terminal-wrapper" id="terminal-left"></div>
+    </div>
+
+    <!-- Draggable divider -->
+    <div id="pane-divider" class="hidden"></div>
+
+    <!-- Right pane (hidden until Ctrl+Shift+T) -->
+    <div class="terminal-pane hidden" id="pane-right">
+      <div class="pane-titlebar">
+        <span class="pane-cwd" id="cwd-right">~</span>
+      </div>
+      <div class="terminal-wrapper" id="terminal-right"></div>
+    </div>
+
+  </div>
+
+  <!-- xterm.js UMD scripts — order matters: core first, then addons -->
+  <script src="../node_modules/xterm/lib/xterm.js"></script>
+  <script src="../node_modules/xterm-addon-fit/lib/xterm-addon-fit.js"></script>
+  <script src="../node_modules/xterm-addon-web-links/lib/xterm-addon-web-links.js"></script>
+  <script src="../node_modules/xterm-addon-search/lib/xterm-addon-search.js"></script>
+
+  <script src="terminal.js"></script>
+</body>
+</html>

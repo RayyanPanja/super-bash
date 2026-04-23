@@ -69,6 +69,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   /** Run git queries for dirPath — returns { isRepo, branch, dirty, ahead, behind }. */
   getGitStatus: (dirPath) => ipcRenderer.invoke('git:status', dirPath),
 
+  // ── Git profiles ───────────────────────────────────────────────────────────
+  /** Load all profiles from ~/.superbash/git-profiles.json */
+  gitProfileList:   ()     => ipcRenderer.invoke('gitProfile:list'),
+  /** Overwrite entire profiles file. */
+  gitProfileSave:   (data) => ipcRenderer.invoke('gitProfile:save', data),
+  /** Run git config commands for the chosen profile. Returns { ok, profile?, scope?, error? } */
+  gitProfileSwitch: (args) => ipcRenderer.invoke('gitProfile:switch', args),
+
   // ── Session persistence ────────────────────────────────────────────────────
   /** Load saved session from ~/.superbash/session.json — returns null if absent. */
   loadSession: () => ipcRenderer.invoke('session:load'),

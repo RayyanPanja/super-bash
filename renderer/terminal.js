@@ -226,7 +226,7 @@ async function init() {
   document.getElementById('btn-close').addEventListener('click', () =>
     window.electronAPI.closeWindow()
   );
-  document.getElementById('btn-settings').addEventListener('click', openSettings);
+  // #btn-settings click is handled by settings-modal.js (git profiles)
   document.getElementById('btn-help').addEventListener('click', () => window.electronAPI.openHelp());
   document.getElementById('btn-new-tab').addEventListener('click', () => createTab());
   document.getElementById('btn-broadcast').addEventListener('click', toggleBroadcast);
@@ -867,7 +867,7 @@ function handleGlobalKeydown(e) {
   }
 
   // ── Settings open: Escape closes it, other shortcuts blocked ────────────────
-  if (!document.getElementById('settings-overlay').classList.contains('hidden')) {
+  if (!document.getElementById('font-settings-overlay').classList.contains('hidden')) {
     if (key === 'Escape') { e.preventDefault(); closeSettings(); }
     // Let text-editing shortcuts through (cut/copy/paste/undo/select-all)
     if (ctrlKey && !['a', 'c', 'v', 'x', 'z'].includes(key.toLowerCase())) {
@@ -1372,11 +1372,11 @@ function openSettings() {
   document.getElementById('settings-restore-session').checked =
     state.config.restoreSession !== false;
 
-  document.getElementById('settings-overlay').classList.remove('hidden');
+  document.getElementById('font-settings-overlay').classList.remove('hidden');
 }
 
 function closeSettings() {
-  document.getElementById('settings-overlay').classList.add('hidden');
+  document.getElementById('font-settings-overlay').classList.add('hidden');
   // Return focus to the terminal
   const tab = state.tabs.find(t => t.id === state.activeTabId);
   if (tab) tab.panes[tab.activePaneId]?.term.focus();
@@ -1440,8 +1440,8 @@ async function applyAndSaveSettings() {
 }
 
 function initSettings() {
-  document.getElementById('settings-close').addEventListener('click', closeSettings);
-  document.getElementById('settings-save').addEventListener('click', applyAndSaveSettings);
+  document.getElementById('font-settings-close').addEventListener('click', closeSettings);
+  document.getElementById('font-settings-save').addEventListener('click', applyAndSaveSettings);
 
   // Live font size preview
   const fontSizeInput = document.getElementById('settings-font-size');
@@ -1451,8 +1451,8 @@ function initSettings() {
   });
 
   // Close on backdrop click
-  document.getElementById('settings-overlay').addEventListener('mousedown', (e) => {
-    if (e.target === document.getElementById('settings-overlay')) closeSettings();
+  document.getElementById('font-settings-overlay').addEventListener('mousedown', (e) => {
+    if (e.target === document.getElementById('font-settings-overlay')) closeSettings();
   });
 }
 

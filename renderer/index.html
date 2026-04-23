@@ -11,13 +11,14 @@
   <!-- xterm.js v4 — UMD builds from node_modules (loaded before terminal.js) -->
   <link rel="stylesheet" href="../node_modules/xterm/css/xterm.css" />
   <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="settings-modal.css" />
 </head>
 <body>
   <!-- ── Custom titlebar (frameless window) ──────────────────────────── -->
   <div id="titlebar">
     <div id="app-title">Super Bash</div>
     <div id="window-controls">
-      <button id="btn-settings"       title="Settings (Ctrl+,)">&#x2699;</button>
+      <button id="btn-settings" class="settings-pill no-drag" title="Git Profiles &amp; Settings">&#x2699; Settings</button>
       <button id="btn-help"          title="Help — feature reference">&#x3F;</button>
       <button id="btn-sync-snippets" title="Sync team snippets">&#x21BB;</button>
       <button id="btn-broadcast"     title="Broadcast mode (Ctrl+Shift+B)">&#x229B;</button>
@@ -84,6 +85,52 @@
     </div>
   </div>
 
+  <!-- ── Settings modal ──────────────────────────────────────────────── -->
+  <div id="settings-overlay" class="hidden">
+    <div id="settings-modal">
+      <nav id="settings-nav">
+        <div class="settings-nav-item active" data-panel="git-profiles">Git Profiles</div>
+      </nav>
+      <div id="settings-content">
+
+        <!-- Git Profiles panel -->
+        <div id="panel-git-profiles" class="settings-panel">
+          <div class="settings-panel-header">
+            <span class="settings-panel-title">Git Profiles</span>
+            <button id="btn-add-profile" title="Add profile">+</button>
+          </div>
+
+          <div id="profile-list">
+            <!-- rows injected by settings-modal.js -->
+          </div>
+
+          <!-- Inline add form (hidden by default) -->
+          <div id="add-profile-form" class="hidden">
+            <input id="add-profile-name"  type="text" placeholder="Profile name (e.g. Rayyan – Personal)" autocomplete="off" />
+            <input id="add-profile-user"  type="text" placeholder="Git username" autocomplete="off" />
+            <input id="add-profile-email" type="text" placeholder="Git email" autocomplete="off" />
+            <input id="add-profile-key"   type="text" placeholder="Signing key (optional)" autocomplete="off" />
+            <div class="add-profile-actions">
+              <button id="btn-save-profile">Save</button>
+              <button id="btn-cancel-profile">Cancel</button>
+            </div>
+          </div>
+
+          <!-- Scope toggle -->
+          <div id="scope-toggle">
+            <label class="scope-label">
+              <input type="radio" name="scope" value="local" /> Local
+            </label>
+            <label class="scope-label">
+              <input type="radio" name="scope" value="global" /> Global
+            </label>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
   <!-- xterm.js UMD scripts — order matters: core first, then addons -->
   <script src="../node_modules/xterm/lib/xterm.js"></script>
   <script src="../node_modules/xterm-addon-fit/lib/xterm-addon-fit.js"></script>
@@ -91,12 +138,12 @@
   <script src="../node_modules/xterm-addon-search/lib/xterm-addon-search.js"></script>
   <script src="../node_modules/xterm-addon-webgl/lib/xterm-addon-webgl.js"></script>
 
-  <!-- ── Settings panel ───────────────────────────────────────────────── -->
-  <div id="settings-overlay" class="hidden">
-    <div id="settings-modal">
-      <div id="settings-header">
-        <span id="settings-title">Settings</span>
-        <button id="settings-close" title="Close (Esc)">&#x2715;</button>
+  <!-- ── Font / shell settings panel ─────────────────────────────────── -->
+  <div id="font-settings-overlay" class="hidden">
+    <div id="font-settings-modal">
+      <div id="font-settings-header">
+        <span id="font-settings-title">Settings</span>
+        <button id="font-settings-close" title="Close (Esc)">&#x2715;</button>
       </div>
       <div id="settings-body">
 
@@ -135,9 +182,9 @@
         </label>
 
       </div>
-      <div id="settings-footer">
+      <div id="font-settings-footer">
         <span class="settings-hint">Changes applied immediately · saved to <code>~/.superbash/personal.json</code></span>
-        <button id="settings-save" class="settings-btn-save">Save</button>
+        <button id="font-settings-save" class="settings-btn-save">Save</button>
       </div>
     </div>
   </div>
@@ -154,5 +201,6 @@
   <div id="toast-container"></div>
 
   <script src="terminal.js"></script>
+  <script src="settings-modal.js"></script>
 </body>
 </html>

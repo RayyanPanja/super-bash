@@ -20,7 +20,42 @@ const { autoUpdater } = require('electron-updater');
 
 let mainWindow;
 let tray = null;
+let launchDir = null;
 const ptyManager = new PtyManager();
+
+function getOpenDirFromArgv(argv) {
+  const idx = argv.indexOf('--open-dir');
+  if (idx === -1 || !argv[idx + 1]) return null;
+
+  try {
+    let candidate = path.resolve(argv[idx + 1]);
+    if (!fs.existsSync(candidate)) return null;
+    const stat = fs.statSync(candidate);
+    if (!stat.isDirectory()) candidate = path.dirname(candidate);
+    return candidate;
+  } catch {
+    return null;
+  }
+}
+
+launchDir = getOpenDirFromArgv(process.argv);
+
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) {
+  app.quit();
+} else {
+  app.on('second-instance', (_event, argv) => {
+    const dirPath = getOpenDirFromArgv(argv);
+    if (dirPath) launchDir = dirPath;
+
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.show();
+      mainWindow.focus();
+      if (dirPath) mainWindow.webContents.send('app:open-dir', dirPath);
+    }
+  });
+}
 
 // ── Window creation ──────────────────────────────────────────────────────────
 
@@ -121,6 +156,8 @@ app.on('activate', () => {
 // ── IPC: Config ──────────────────────────────────────────────────────────────
 
 ipcMain.handle('config:load', () => ConfigLoader.load());
+
+ipcMain.handle('app:get-launch-dir', () => launchDir);
 
 // ── IPC: Team snippets ────────────────────────────────────────────────────────
 

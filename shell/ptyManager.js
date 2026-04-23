@@ -95,12 +95,13 @@ class PtyManager {
    * @param {number} [opts.rows=24]
    * @param {Record<string,string>} [opts.env={}]
    * @param {string|null} [opts.shellPath]
+   * @param {string|null} [opts.cwd]
    * @param {Record<string,string>} [opts.aliases={}]
    * @param {(data: string) => void} [opts.onData]
    * @param {(exitCode: number) => void} [opts.onExit]
    * @returns {string} sessionId
    */
-  create({ cols = 80, rows = 24, env = {}, shellPath = null, aliases = {}, onData, onExit } = {}) {
+  create({ cols = 80, rows = 24, env = {}, shellPath = null, cwd = null, aliases = {}, onData, onExit } = {}) {
     const shell = shellPath || getDefaultShell();
     const sessionId = crypto.randomUUID();
 
@@ -118,7 +119,7 @@ class PtyManager {
       name: 'xterm-256color',
       cols,
       rows,
-      cwd: os.homedir(),
+      cwd: cwd || os.homedir(),
       env: { ...process.env, ...env },
     });
 

@@ -56,6 +56,12 @@ describe('PtyManager.create()', () => {
     expect(spawnArgs[2]).toMatchObject({ cols: 100, rows: 30 });
   });
 
+  test('uses provided cwd when spawning a PTY process', () => {
+    const mgr = new PtyManager();
+    mgr.create({ cwd: 'C:\\projects\\demo' });
+    expect(pty.spawn.mock.calls[0][2]).toMatchObject({ cwd: 'C:\\projects\\demo' });
+  });
+
   test('registers onData and onExit callbacks', () => {
     const onData = jest.fn();
     const onExit = jest.fn();

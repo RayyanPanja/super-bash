@@ -16,7 +16,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // ── PTY / Shell ────────────────────────────────────────────────────────────
   /**
    * Creates a new PTY session.
-   * @param {{ cols: number, rows: number, env: object, shellPath: string|null, aliases: object }} opts
+   * @param {{ cols: number, rows: number, env: object, shellPath: string|null, cwd: string|null, aliases: object }} opts
    * @returns {Promise<string>} sessionId
    */
   createShell: (opts) => ipcRenderer.invoke('shell:create', opts),
@@ -104,5 +104,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
     const handler = (_event, status) => callback(status);
     ipcRenderer.on('updater:status', handler);
     return () => ipcRenderer.removeListener('updater:status', handler);
+  },
+
+  // ── Explorer context menu launch ───────────────────────────────────────────
+  getLaunchDir: () => ipcRenderer.invoke('app:get-launch-dir'),
+  onOpenDir: (callback) => {
+    const handler = (_event, dirPath) => callback(dirPath);
+    ipcRenderer.on('app:open-dir', handler);
+    return () => ipcRenderer.removeListener('app:open-dir', handler);
   },
 });

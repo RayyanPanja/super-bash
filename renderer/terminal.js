@@ -318,9 +318,18 @@ async function init() {
     if (_gitBarInterval) clearInterval(_gitBarInterval);
   });
 
-  const restored = await tryRestoreSession();
-  if (!restored) {
-    await createTab();
+  window.electronAPI.onOpenDir(async (dirPath) => {
+    await createTab(dirPath);
+  });
+
+  const launchDir = await window.electronAPI.getLaunchDir();
+  if (launchDir) {
+    await createTab(launchDir);
+  } else {
+    const restored = await tryRestoreSession();
+    if (!restored) {
+      await createTab();
+    }
   }
 
   refreshGitBar();
@@ -457,11 +466,7 @@ async function createTab(restoreCwd = null) {
   buildTabDOM(tabId);
 
   await switchTab(tabId);
-  await createPane(tabId, 'left');
-
-  if (restoreCwd) {
-    setTimeout(() => cdPane(tab.panes.left, restoreCwd), 500);
-  }
+  await createPane(tabId, 'left', restoreCwd);
 
   saveSession();
   return tabId;
@@ -516,7 +521,7 @@ async function switchTab(tabId) {
 
 // ── Pane creation ─────────────────────────────────────────────────────────────
 
-async function createPane(tabId, side) {
+async function createPane(tabId, side, initialCwd = null) {
   const tab = state.tabs.find(t => t.id === tabId);
   if (!tab) return;
 
@@ -570,6 +575,7 @@ async function createPane(tabId, side) {
     rows:      term.rows,
     env:       { ...userEnv, PROMPT_COMMAND: promptCmd },
     shellPath: state.config.shellPath || null,
+    cwd:       initialCwd || null,
     aliases:   state.config.aliases || {},
   });
 
@@ -596,11 +602,17 @@ async function createPane(tabId, side) {
   // Build pane state before registering the title-change handler so the
   // closure can write back into the same object.
   const pane = {
-    term, fitAddon, searchAddon, sessionId, unsubData, unsubExit, cwd: '~',
+    term, fitAddon, searchAddon, sessionId, unsubData, unsubExit, cwd: initialCwd || '~',
     projectProfile: null, projectProfileDir: null, _lastCheckedCwd: null, _lastNullCwd: null,
     _broadcastQueue: [], _broadcastDraining: false,
   };
   tab.panes[side] = pane;
+  if (initialCwd) {
+    const cwdEl = document.getElementById(elId.cwd(tabId, side));
+    if (cwdEl) cwdEl.textContent = initialCwd;
+    updateTabLabel(tabId);
+    checkProjectProfile(pane, initialCwd);
+  }
 
   // ── Wire search bar ────────────────────────────────────────────────────────
   const searchBarEl   = document.getElementById(elId.searchBar(tabId, side));

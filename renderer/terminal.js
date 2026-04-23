@@ -129,6 +129,27 @@ async function checkProjectProfile(pane, newCwd) {
     if (pane.projectProfileDir === newCwd) return; // already loaded for this dir
     if (pane.projectProfile) unloadProfile(pane);
     loadProfile(pane, profile, newCwd);
+
+    // Auto-switch git profile if specified in .superbash
+    if (profile.gitProfile) {
+      const result = await window.electronAPI.gitProfileSwitch({
+        profileId: profile.gitProfile,
+        scope: 'local',
+        cwd: newCwd,
+      });
+
+      if (result.ok) {
+        writeAmberToPane(pane, `Git profile switched to: ${result.profile.name} (${result.profile.gitEmail}) [local]`);
+        const btn = document.getElementById('btn-settings');
+        if (btn) btn.textContent = `⚙ ${result.profile.name}`;
+      } else if (result.error === 'not-a-git-repo') {
+        writeAmberToPane(pane, `Git profile: not a git repo, profile not applied [local]`);
+      } else if (result.error === 'not-found') {
+        writeAmberToPane(pane, `Git profile "${profile.gitProfile}" not found — check git-profiles.json`);
+      } else {
+        writeAmberToPane(pane, `Git profile error: ${result.error}`);
+      }
+    }
   } else {
     pane._lastNullCwd = newCwd; // remember: this dir returned no profile
     if (pane.projectProfile) unloadProfile(pane);

@@ -547,6 +547,99 @@ html, body {
   letter-spacing: 0.04em;
 }
 
+/* ── Keyboard shortcuts modal ────────────────────────────────────────────── */
+#shortcuts-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: rgba(0, 0, 0, 0.65);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+#shortcuts-overlay.hidden { display: none; }
+
+#shortcuts-modal {
+  width: 480px;
+  max-width: calc(100vw - 40px);
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-secondary);
+  border: 1px solid rgba(240, 165, 0, 0.35);
+  border-radius: 4px;
+  box-shadow: 0 24px 64px rgba(0,0,0,0.85);
+  overflow: hidden;
+}
+
+#shortcuts-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid #1f1f1f;
+  flex-shrink: 0;
+}
+
+#shortcuts-title {
+  font-family: var(--font-family);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--accent);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+#shortcuts-close {
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 2px;
+}
+#shortcuts-close:hover { color: var(--text-primary); background: rgba(255,255,255,0.07); }
+
+#shortcuts-body {
+  overflow-y: auto;
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.shortcuts-group-title {
+  font-family: var(--font-family);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 6px;
+}
+
+.shortcuts-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 3px 0;
+  font-family: var(--font-family);
+  font-size: 12px;
+  color: var(--text-primary);
+}
+
+.shortcuts-row kbd {
+  background: var(--bg-primary);
+  border: 1px solid #333;
+  border-radius: 3px;
+  padding: 2px 7px;
+  font-family: var(--font-family);
+  font-size: 11px;
+  color: var(--accent);
+  white-space: nowrap;
+}
+
 /* ── Font / shell settings panel ────────────────────────────────────────── */
 #font-settings-overlay {
   position: fixed;

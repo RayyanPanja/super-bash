@@ -1,0 +1,282 @@
+/* ── Settings pill button in titlebar ──────────────────────────────────────── */
+.settings-pill {
+  background: transparent;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  font-family: inherit;
+  font-size: 11px;
+  padding: 2px 10px;
+  border-radius: 3px;
+  cursor: pointer;
+  margin: 0 8px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  -webkit-app-region: no-drag;
+  transition: background 0.12s ease;
+  white-space: nowrap;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.settings-pill:hover {
+  background: var(--accent-dim);
+}
+
+/* ── Settings overlay ────────────────────────────────────────────────────────── */
+#settings-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#settings-overlay.hidden {
+  display: none;
+}
+
+/* ── Settings modal container ────────────────────────────────────────────────── */
+#settings-modal {
+  background: var(--bg-secondary);
+  border: 1px solid #2a2a2a;
+  border-radius: 4px;
+  width: 680px;
+  max-width: 90vw;
+  height: 440px;
+  max-height: 80vh;
+  display: flex;
+  overflow: hidden;
+}
+
+/* ── Left nav ────────────────────────────────────────────────────────────────── */
+#settings-nav {
+  width: 160px;
+  flex-shrink: 0;
+  background: var(--bg-primary);
+  border-right: 1px solid #1f1f1f;
+  padding: 12px 0;
+}
+
+.settings-nav-item {
+  padding: 8px 16px;
+  font-size: 12px;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: color 0.12s ease, background 0.12s ease;
+}
+
+.settings-nav-item.active {
+  color: var(--accent);
+  background: var(--accent-dim);
+  border-left: 2px solid var(--accent);
+  padding-left: 14px;
+}
+
+/* ── Content area ────────────────────────────────────────────────────────────── */
+#settings-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+}
+
+.settings-panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+/* ── Panel header ────────────────────────────────────────────────────────────── */
+.settings-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.settings-panel-title {
+  font-size: 13px;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.settings-panel-header button {
+  background: transparent;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  font-size: 16px;
+  width: 26px;
+  height: 26px;
+  border-radius: 3px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.12s ease;
+}
+
+.settings-panel-header button:hover {
+  background: var(--accent-dim);
+}
+
+/* ── Profile list ────────────────────────────────────────────────────────────── */
+#profile-list {
+  flex: 1;
+  overflow-y: auto;
+  margin-bottom: 12px;
+}
+
+.profile-row {
+  display: flex;
+  align-items: center;
+  padding: 8px 10px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: background 0.1s ease;
+  gap: 10px;
+  position: relative;
+}
+
+.profile-row:hover {
+  background: var(--bg-tertiary);
+}
+
+.profile-row.active {
+  border-left: 2px solid var(--accent);
+  padding-left: 8px;
+  background: rgba(240, 165, 0, 0.07);
+}
+
+.profile-row-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.profile-row-name {
+  font-size: 12px;
+  color: var(--text-primary);
+}
+
+.profile-row.active .profile-row-name {
+  color: var(--accent);
+}
+
+.profile-row-meta {
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+.profile-row.active .profile-row-meta {
+  color: rgba(240, 165, 0, 0.7);
+}
+
+.profile-row-delete {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 2px;
+  opacity: 0;
+  transition: opacity 0.1s ease, color 0.1s ease;
+}
+
+.profile-row:hover .profile-row-delete {
+  opacity: 1;
+}
+
+.profile-row-delete:hover {
+  color: #e06c75;
+}
+
+/* ── Add profile form ────────────────────────────────────────────────────────── */
+#add-profile-form {
+  border-top: 1px solid #1f1f1f;
+  padding-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+#add-profile-form.hidden {
+  display: none;
+}
+
+#add-profile-form input {
+  background: var(--bg-primary);
+  border: 1px solid #2a2a2a;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 11px;
+  padding: 5px 8px;
+  border-radius: 3px;
+  outline: none;
+  transition: border-color 0.12s ease;
+}
+
+#add-profile-form input:focus {
+  border-color: var(--accent);
+}
+
+.add-profile-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.add-profile-actions button {
+  background: transparent;
+  border: 1px solid #2a2a2a;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 11px;
+  padding: 4px 14px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.add-profile-actions button:first-child {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.add-profile-actions button:first-child:hover {
+  background: var(--accent-dim);
+}
+
+.add-profile-actions button:last-child:hover {
+  background: var(--bg-tertiary);
+}
+
+/* ── Scope toggle ────────────────────────────────────────────────────────────── */
+#scope-toggle {
+  display: flex;
+  gap: 16px;
+  padding-top: 10px;
+  border-top: 1px solid #1f1f1f;
+  margin-top: auto;
+}
+
+.scope-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.scope-label input[type="radio"] {
+  accent-color: var(--accent);
+  cursor: pointer;
+}

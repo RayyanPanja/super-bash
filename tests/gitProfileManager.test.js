@@ -1,7 +1,11 @@
 const fs   = require('fs');
 const path = require('path');
 const os   = require('os');
-const { load, save, _setProfilesPath } = require('../config/gitProfileManager');
+
+jest.mock('child_process', () => ({ exec: jest.fn() }));
+const { exec } = require('child_process');
+
+const { load, save, switchProfile, _setProfilesPath } = require('../config/gitProfileManager');
 
 let tmpPath;
 
@@ -55,11 +59,6 @@ describe('switchProfile', () => {
       { id: 'signed',   name: 'Signed', gitUser: 'su', gitEmail: 's@e.com', signingKey: 'ABC123' },
     ],
   };
-
-  const { switchProfile } = require('../config/gitProfileManager');
-
-  jest.mock('child_process', () => ({ exec: jest.fn() }));
-  const { exec } = require('child_process');
 
   beforeEach(() => {
     save(baseData);

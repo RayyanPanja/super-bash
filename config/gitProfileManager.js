@@ -25,7 +25,32 @@ function save(data) {
 }
 
 function switchProfile({ profileId, scope, cwd }) {
-  // implemented in Task 2
+  return new Promise((resolve) => {
+    const data = load();
+    const profile = data.profiles.find(p => p.id === profileId);
+    if (!profile) return resolve({ ok: false, error: 'not-found' });
+
+    const flag = scope === 'global' ? '--global' : '--local';
+    const cmds = [
+      `git config ${flag} user.name "${profile.gitUser}"`,
+      `git config ${flag} user.email "${profile.gitEmail}"`,
+    ];
+    if (profile.signingKey) {
+      cmds.push(`git config ${flag} user.signingkey "${profile.signingKey}"`);
+      cmds.push(`git config ${flag} gpg.program gpg`);
+    }
+
+    exec(cmds.join(' && '), { cwd, timeout: 5000, windowsHide: true }, (err, _stdout, stderr) => {
+      if (err) {
+        const isNotRepo = (stderr || '').toLowerCase().includes('not a git repository');
+        return resolve({ ok: false, error: isNotRepo ? 'not-a-git-repo' : (stderr.trim() || err.message) });
+      }
+      data.active    = profileId;
+      data.lastScope = scope;
+      save(data);
+      resolve({ ok: true, profile, scope });
+    });
+  });
 }
 
 module.exports = { load, save, switchProfile, _setProfilesPath };

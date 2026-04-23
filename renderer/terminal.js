@@ -296,6 +296,7 @@ async function init() {
     syncBtn.style.display = 'none';
   }
 
+  initSettings();
   initPalette();
   initGitBar();
   initContextMenu();
@@ -922,10 +923,18 @@ function handleGlobalKeydown(e) {
     return;
   }
 
+  // ── Font settings open: Escape closes it, other shortcuts blocked ───────────
+  if (!document.getElementById('font-settings-overlay').classList.contains('hidden')) {
+    if (key === 'Escape') { e.preventDefault(); closeSettings(); }
+    if (ctrlKey && !['a', 'c', 'v', 'x', 'z'].includes(key.toLowerCase())) {
+      e.preventDefault(); e.stopPropagation();
+    }
+    return;
+  }
+
   // ── Git profiles modal open: Escape closes it, other shortcuts blocked ──────
   if (!document.getElementById('settings-overlay').classList.contains('hidden')) {
     if (key === 'Escape') { e.preventDefault(); document.getElementById('settings-overlay').classList.add('hidden'); }
-    // Let text-editing shortcuts through (cut/copy/paste/undo/select-all)
     if (ctrlKey && !['a', 'c', 'v', 'x', 'z'].includes(key.toLowerCase())) {
       e.preventDefault(); e.stopPropagation();
     }
@@ -959,10 +968,10 @@ function handleGlobalKeydown(e) {
     return;
   }
 
-  // Ctrl+, — open git profiles settings
+  // Ctrl+, — open font/shell settings
   if (ctrlKey && !shiftKey && key === ',') {
     e.preventDefault(); e.stopPropagation();
-    document.getElementById('btn-settings').click();
+    openSettings();
     return;
   }
 
@@ -1411,6 +1420,96 @@ async function executeAndClose(entry) {
       }
     }
   }
+}
+
+// ── Font / shell settings panel ───────────────────────────────────────────────
+
+function openSettings() {
+  const fs = document.getElementById('settings-font-size');
+  const fv = document.getElementById('settings-font-size-val');
+  fs.value = state.fontSize;
+  fv.textContent = state.fontSize;
+
+  document.getElementById('settings-font-family').value = state.config.fontFamily || '';
+  document.getElementById('settings-shell-path').value  = state.config.shellPath  || '';
+  document.getElementById('settings-opacity').value     = state.opacityIndex;
+  document.getElementById('settings-restore-session').checked =
+    state.config.restoreSession !== false;
+
+  document.getElementById('font-settings-overlay').classList.remove('hidden');
+}
+
+function closeSettings() {
+  document.getElementById('font-settings-overlay').classList.add('hidden');
+  const tab = state.tabs.find(t => t.id === state.activeTabId);
+  if (tab) tab.panes[tab.activePaneId]?.term.focus();
+}
+
+async function applyAndSaveSettings() {
+  const fontSize       = parseInt(document.getElementById('settings-font-size').value, 10);
+  const fontFamily     = document.getElementById('settings-font-family').value.trim() || null;
+  const shellPath      = document.getElementById('settings-shell-path').value.trim()  || null;
+  const opacityIdx     = parseInt(document.getElementById('settings-opacity').value, 10);
+  const restoreSession = document.getElementById('settings-restore-session').checked;
+
+  if (fontSize !== state.fontSize) {
+    state.fontSize = fontSize;
+    for (const tab of state.tabs) {
+      for (const pane of Object.values(tab.panes)) {
+        if (pane) pane.term.options.fontSize = fontSize;
+      }
+    }
+    fitAll();
+  }
+
+  if (fontFamily && fontFamily !== state.config.fontFamily) {
+    state.config.fontFamily = fontFamily;
+    document.documentElement.style.setProperty('--font-family', fontFamily);
+    for (const tab of state.tabs) {
+      for (const pane of Object.values(tab.panes)) {
+        if (pane) pane.term.options.fontFamily = fontFamily;
+      }
+    }
+    fitAll();
+  }
+
+  if (opacityIdx !== state.opacityIndex) {
+    state.opacityIndex = opacityIdx;
+    window.electronAPI.setOpacity(OPACITY_LEVELS[opacityIdx]);
+  }
+
+  state.config.shellPath      = shellPath;
+  state.config.restoreSession = restoreSession;
+
+  const overrides = {
+    fontSize,
+    fontFamily:      fontFamily    || undefined,
+    shellPath:       shellPath     || undefined,
+    restoreSession,
+  };
+  const result = await window.electronAPI.saveSettings(overrides);
+  if (result.ok) {
+    showToast('Settings saved', 'success');
+  } else {
+    showToast(`Failed to save settings: ${result.error}`, 'error', 5000);
+  }
+
+  closeSettings();
+}
+
+function initSettings() {
+  document.getElementById('font-settings-close').addEventListener('click', closeSettings);
+  document.getElementById('font-settings-save').addEventListener('click', applyAndSaveSettings);
+
+  const fontSizeInput = document.getElementById('settings-font-size');
+  const fontSizeVal   = document.getElementById('settings-font-size-val');
+  fontSizeInput.addEventListener('input', () => {
+    fontSizeVal.textContent = fontSizeInput.value;
+  });
+
+  document.getElementById('font-settings-overlay').addEventListener('mousedown', (e) => {
+    if (e.target === document.getElementById('font-settings-overlay')) closeSettings();
+  });
 }
 
 

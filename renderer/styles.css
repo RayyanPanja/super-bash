@@ -547,6 +547,168 @@ html, body {
   letter-spacing: 0.04em;
 }
 
+/* ── Font / shell settings panel ────────────────────────────────────────── */
+#font-settings-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#font-settings-overlay.hidden { display: none; }
+
+#font-settings-modal {
+  width: 460px;
+  max-width: calc(100vw - 40px);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-secondary);
+  border: 1px solid rgba(240, 165, 0, 0.35);
+  border-radius: 4px;
+  box-shadow: 0 24px 64px rgba(0,0,0,0.85);
+  overflow: hidden;
+}
+
+#font-settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid #1f1f1f;
+  flex-shrink: 0;
+}
+
+#font-settings-title {
+  font-family: var(--font-family);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--accent);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+#font-settings-close {
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 2px;
+}
+
+#font-settings-close:hover { color: var(--text-primary); background: rgba(255,255,255,0.07); }
+
+#font-settings-body {
+  padding: 8px 0;
+  overflow-y: auto;
+  max-height: calc(100vh - 200px);
+}
+
+.font-settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 16px;
+  cursor: default;
+}
+
+.font-settings-row:hover { background: rgba(255,255,255,0.02); }
+
+.font-settings-label {
+  font-family: var(--font-family);
+  font-size: 12px;
+  color: var(--text-primary);
+  flex-shrink: 0;
+  min-width: 120px;
+  user-select: none;
+}
+
+.font-settings-control { display: flex; align-items: center; gap: 8px; flex: 1; justify-content: flex-end; }
+.font-settings-font-size-row input[type="range"] { width: 140px; accent-color: var(--accent); }
+#settings-font-size-val {
+  font-family: var(--font-family);
+  font-size: 11px;
+  color: var(--accent);
+  min-width: 22px;
+  text-align: right;
+}
+
+.font-settings-text-input {
+  flex: 1;
+  height: 26px;
+  background: var(--bg-primary);
+  border: 1px solid #2a2a2a;
+  border-radius: 2px;
+  color: var(--text-primary);
+  font-family: var(--font-family);
+  font-size: 11px;
+  padding: 0 8px;
+  outline: none;
+  caret-color: var(--accent);
+  min-width: 0;
+}
+
+.font-settings-text-input:focus { border-color: rgba(240,165,0,0.5); }
+
+.font-settings-select {
+  background: var(--bg-primary);
+  border: 1px solid #2a2a2a;
+  border-radius: 2px;
+  color: var(--text-primary);
+  font-family: var(--font-family);
+  font-size: 11px;
+  padding: 3px 6px;
+  outline: none;
+  cursor: pointer;
+}
+
+.font-settings-select:focus { border-color: rgba(240,165,0,0.5); }
+
+.font-settings-row-toggle { cursor: pointer; }
+.font-settings-row-toggle input[type="checkbox"] { accent-color: var(--accent); width: 14px; height: 14px; cursor: pointer; }
+
+#font-settings-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 14px;
+  border-top: 1px solid #1f1f1f;
+  flex-shrink: 0;
+}
+
+.font-settings-hint {
+  font-family: var(--font-family);
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+.font-settings-hint code {
+  color: var(--accent);
+  font-family: var(--font-family);
+}
+
+.font-settings-btn-save {
+  background: var(--accent);
+  color: #000;
+  border: none;
+  border-radius: 2px;
+  font-family: var(--font-family);
+  font-size: 11px;
+  font-weight: 500;
+  padding: 4px 14px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: opacity 0.1s;
+}
+
+.font-settings-btn-save:hover { opacity: 0.85; }
+
 /* ── Git status bar ──────────────────────────────────────────────────────── */
 #git-bar {
   height: var(--git-bar-height);

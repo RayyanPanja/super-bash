@@ -935,10 +935,18 @@ function handleGlobalKeydown(e) {
     return;
   }
 
-  // ── Settings open: Escape closes it, other shortcuts blocked ────────────────
+  // ── Font settings open: Escape closes it, other shortcuts blocked ───────────
   if (!document.getElementById('font-settings-overlay').classList.contains('hidden')) {
     if (key === 'Escape') { e.preventDefault(); closeSettings(); }
-    // Let text-editing shortcuts through (cut/copy/paste/undo/select-all)
+    if (ctrlKey && !['a', 'c', 'v', 'x', 'z'].includes(key.toLowerCase())) {
+      e.preventDefault(); e.stopPropagation();
+    }
+    return;
+  }
+
+  // ── Git profiles modal open: Escape closes it, other shortcuts blocked ──────
+  if (!document.getElementById('settings-overlay').classList.contains('hidden')) {
+    if (key === 'Escape') { e.preventDefault(); document.getElementById('settings-overlay').classList.add('hidden'); }
     if (ctrlKey && !['a', 'c', 'v', 'x', 'z'].includes(key.toLowerCase())) {
       e.preventDefault(); e.stopPropagation();
     }
@@ -972,7 +980,7 @@ function handleGlobalKeydown(e) {
     return;
   }
 
-  // Ctrl+, — open settings
+  // Ctrl+, — open font/shell settings
   if (ctrlKey && !shiftKey && key === ',') {
     e.preventDefault(); e.stopPropagation();
     openSettings();
@@ -1426,10 +1434,9 @@ async function executeAndClose(entry) {
   }
 }
 
-// ── Settings panel ───────────────────────────────────────────────────────────
+// ── Font / shell settings panel ───────────────────────────────────────────────
 
 function openSettings() {
-  // Populate fields from current live state / config
   const fs = document.getElementById('settings-font-size');
   const fv = document.getElementById('settings-font-size-val');
   fs.value = state.fontSize;
@@ -1446,19 +1453,17 @@ function openSettings() {
 
 function closeSettings() {
   document.getElementById('font-settings-overlay').classList.add('hidden');
-  // Return focus to the terminal
   const tab = state.tabs.find(t => t.id === state.activeTabId);
   if (tab) tab.panes[tab.activePaneId]?.term.focus();
 }
 
 async function applyAndSaveSettings() {
-  const fontSize      = parseInt(document.getElementById('settings-font-size').value, 10);
-  const fontFamily    = document.getElementById('settings-font-family').value.trim() || null;
-  const shellPath     = document.getElementById('settings-shell-path').value.trim()  || null;
-  const opacityIdx    = parseInt(document.getElementById('settings-opacity').value, 10);
+  const fontSize       = parseInt(document.getElementById('settings-font-size').value, 10);
+  const fontFamily     = document.getElementById('settings-font-family').value.trim() || null;
+  const shellPath      = document.getElementById('settings-shell-path').value.trim()  || null;
+  const opacityIdx     = parseInt(document.getElementById('settings-opacity').value, 10);
   const restoreSession = document.getElementById('settings-restore-session').checked;
 
-  // Apply font size live
   if (fontSize !== state.fontSize) {
     state.fontSize = fontSize;
     for (const tab of state.tabs) {
@@ -1469,7 +1474,6 @@ async function applyAndSaveSettings() {
     fitAll();
   }
 
-  // Apply font family live
   if (fontFamily && fontFamily !== state.config.fontFamily) {
     state.config.fontFamily = fontFamily;
     document.documentElement.style.setProperty('--font-family', fontFamily);
@@ -1481,17 +1485,14 @@ async function applyAndSaveSettings() {
     fitAll();
   }
 
-  // Apply opacity live
   if (opacityIdx !== state.opacityIndex) {
     state.opacityIndex = opacityIdx;
     window.electronAPI.setOpacity(OPACITY_LEVELS[opacityIdx]);
   }
 
-  // Update config cache for future panes
   state.config.shellPath      = shellPath;
   state.config.restoreSession = restoreSession;
 
-  // Persist to personal.json
   const overrides = {
     fontSize,
     fontFamily:      fontFamily    || undefined,
@@ -1512,18 +1513,17 @@ function initSettings() {
   document.getElementById('font-settings-close').addEventListener('click', closeSettings);
   document.getElementById('font-settings-save').addEventListener('click', applyAndSaveSettings);
 
-  // Live font size preview
   const fontSizeInput = document.getElementById('settings-font-size');
   const fontSizeVal   = document.getElementById('settings-font-size-val');
   fontSizeInput.addEventListener('input', () => {
     fontSizeVal.textContent = fontSizeInput.value;
   });
 
-  // Close on backdrop click
   document.getElementById('font-settings-overlay').addEventListener('mousedown', (e) => {
     if (e.target === document.getElementById('font-settings-overlay')) closeSettings();
   });
 }
+
 
 // ── Right-click context menu ──────────────────────────────────────────────────
 

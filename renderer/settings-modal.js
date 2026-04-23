@@ -13,6 +13,11 @@
   const inpKey       = document.getElementById('add-profile-key');
   const scopeRadios  = document.querySelectorAll('input[name="scope"]');
 
+  if (!overlay || !btnSettings || !profileList || !addForm || !btnAdd || !btnSave || !btnCancel) {
+    console.error('settings-modal.js: required DOM elements not found');
+    return;
+  }
+
   // ── State ─────────────────────────────────────────────────────────────────
   let _data = { active: null, lastScope: 'local', profiles: [] };
 

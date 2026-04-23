@@ -547,8 +547,8 @@ html, body {
   letter-spacing: 0.04em;
 }
 
-/* ── Settings panel ──────────────────────────────────────────────────────── */
-#settings-overlay {
+/* ── Font / shell settings panel ────────────────────────────────────────── */
+#font-settings-overlay {
   position: fixed;
   inset: 0;
   z-index: 200;
@@ -558,9 +558,9 @@ html, body {
   justify-content: center;
 }
 
-#settings-overlay.hidden { display: none; }
+#font-settings-overlay.hidden { display: none; }
 
-#settings-modal {
+#font-settings-modal {
   width: 460px;
   max-width: calc(100vw - 40px);
   display: flex;
@@ -572,7 +572,7 @@ html, body {
   overflow: hidden;
 }
 
-#settings-header {
+#font-settings-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -581,7 +581,7 @@ html, body {
   flex-shrink: 0;
 }
 
-#settings-title {
+#font-settings-title {
   font-family: var(--font-family);
   font-size: 12px;
   font-weight: 500;
@@ -590,7 +590,7 @@ html, body {
   text-transform: uppercase;
 }
 
-#settings-close {
+#font-settings-close {
   background: transparent;
   border: none;
   color: var(--text-dim);
@@ -600,15 +600,15 @@ html, body {
   border-radius: 2px;
 }
 
-#settings-close:hover { color: var(--text-primary); background: rgba(255,255,255,0.07); }
+#font-settings-close:hover { color: var(--text-primary); background: rgba(255,255,255,0.07); }
 
-#settings-body {
+#font-settings-body {
   padding: 8px 0;
   overflow-y: auto;
   max-height: calc(100vh - 200px);
 }
 
-.settings-row {
+.font-settings-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -617,9 +617,9 @@ html, body {
   cursor: default;
 }
 
-.settings-row:hover { background: rgba(255,255,255,0.02); }
+.font-settings-row:hover { background: rgba(255,255,255,0.02); }
 
-.settings-label {
+.font-settings-label {
   font-family: var(--font-family);
   font-size: 12px;
   color: var(--text-primary);
@@ -628,8 +628,8 @@ html, body {
   user-select: none;
 }
 
-.settings-control { display: flex; align-items: center; gap: 8px; flex: 1; justify-content: flex-end; }
-.settings-font-size-row input[type="range"] { width: 140px; accent-color: var(--accent); }
+.font-settings-control { display: flex; align-items: center; gap: 8px; flex: 1; justify-content: flex-end; }
+.font-settings-font-size-row input[type="range"] { width: 140px; accent-color: var(--accent); }
 #settings-font-size-val {
   font-family: var(--font-family);
   font-size: 11px;
@@ -638,7 +638,7 @@ html, body {
   text-align: right;
 }
 
-.settings-text-input {
+.font-settings-text-input {
   flex: 1;
   height: 26px;
   background: var(--bg-primary);
@@ -653,9 +653,9 @@ html, body {
   min-width: 0;
 }
 
-.settings-text-input:focus { border-color: rgba(240,165,0,0.5); }
+.font-settings-text-input:focus { border-color: rgba(240,165,0,0.5); }
 
-.settings-select {
+.font-settings-select {
   background: var(--bg-primary);
   border: 1px solid #2a2a2a;
   border-radius: 2px;
@@ -667,12 +667,12 @@ html, body {
   cursor: pointer;
 }
 
-.settings-select:focus { border-color: rgba(240,165,0,0.5); }
+.font-settings-select:focus { border-color: rgba(240,165,0,0.5); }
 
-.settings-row-toggle { cursor: pointer; }
-.settings-row-toggle input[type="checkbox"] { accent-color: var(--accent); width: 14px; height: 14px; cursor: pointer; }
+.font-settings-row-toggle { cursor: pointer; }
+.font-settings-row-toggle input[type="checkbox"] { accent-color: var(--accent); width: 14px; height: 14px; cursor: pointer; }
 
-#settings-footer {
+#font-settings-footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -682,18 +682,18 @@ html, body {
   flex-shrink: 0;
 }
 
-.settings-hint {
+.font-settings-hint {
   font-family: var(--font-family);
   font-size: 10px;
   color: var(--text-dim);
 }
 
-.settings-hint code {
+.font-settings-hint code {
   color: var(--accent);
   font-family: var(--font-family);
 }
 
-.settings-btn-save {
+.font-settings-btn-save {
   background: var(--accent);
   color: #000;
   border: none;
@@ -707,7 +707,7 @@ html, body {
   transition: opacity 0.1s;
 }
 
-.settings-btn-save:hover { opacity: 0.85; }
+.font-settings-btn-save:hover { opacity: 0.85; }
 
 /* ── Git status bar ──────────────────────────────────────────────────────── */
 #git-bar {

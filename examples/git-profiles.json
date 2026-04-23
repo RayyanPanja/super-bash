@@ -1,0 +1,27 @@
+{
+  "active": "personal",
+  "lastScope": "local",
+  "profiles": [
+    {
+      "id": "personal",
+      "name": "Rayyan – Personal",
+      "gitUser": "rayyan",
+      "gitEmail": "rayyan@personal.dev",
+      "signingKey": ""
+    },
+    {
+      "id": "vyxo",
+      "name": "Rayyan – Vyxo (Agency)",
+      "gitUser": "rayyan-vyxo",
+      "gitEmail": "rayyan@vyxo.in",
+      "signingKey": ""
+    },
+    {
+      "id": "client-template",
+      "name": "Client – Placeholder",
+      "gitUser": "your-username",
+      "gitEmail": "you@client.com",
+      "signingKey": ""
+    }
+  ]
+}

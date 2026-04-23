@@ -56,6 +56,42 @@ const state = {
 
 const OPACITY_LEVELS = [1.0, 0.85, 0.70];
 
+// ── Git profile helpers ───────────────────────────────────────────────────────
+
+function getActivePane() {
+  const tab = state.tabs.find(t => t.id === state.activeTabId);
+  if (!tab) return null;
+  return tab.panes[tab.activePaneId] || tab.panes.left || null;
+}
+
+function writeAmberToPane(pane, message) {
+  if (!pane?.term) return;
+  pane.term.write(`\r\n\x1b[38;2;240;165;0m${message}\x1b[0m\r\n`);
+}
+
+// Respond to settings-modal.js requesting the active pane's cwd
+document.addEventListener('requestActiveCwd', (e) => {
+  const pane = getActivePane();
+  e.detail.resolve(pane?.cwd || '');
+});
+
+// Handle git profile switch result from settings-modal.js
+document.addEventListener('gitProfileSwitched', (e) => {
+  const { ok, profile, scope, error } = e.detail;
+  const pane = getActivePane();
+  if (!pane) return;
+
+  if (ok) {
+    writeAmberToPane(pane, `Git profile switched to: ${profile.name} (${profile.gitEmail}) [${scope}]`);
+  } else if (error === 'not-a-git-repo') {
+    writeAmberToPane(pane, `Git profile: not a git repo, profile not applied [${scope || 'local'}]`);
+  } else if (error === 'not-found') {
+    writeAmberToPane(pane, `Git profile: profile not found`);
+  } else {
+    writeAmberToPane(pane, `Git profile error: ${error}`);
+  }
+});
+
 // ── xterm theme (matches styles.css) ────────────────────────────────────────
 
 const XTERM_THEME = {

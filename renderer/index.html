@@ -138,6 +138,52 @@
   <script src="../node_modules/xterm-addon-search/lib/xterm-addon-search.js"></script>
   <script src="../node_modules/xterm-addon-webgl/lib/xterm-addon-webgl.js"></script>
 
+  <!-- ── Keyboard shortcuts modal ─────────────────────────────────────── -->
+  <div id="shortcuts-overlay" class="hidden">
+    <div id="shortcuts-modal">
+      <div id="shortcuts-header">
+        <span id="shortcuts-title">Keyboard Shortcuts</span>
+        <button id="shortcuts-close" title="Close (Esc)">&#x2715;</button>
+      </div>
+      <div id="shortcuts-body">
+
+        <div class="shortcuts-group">
+          <div class="shortcuts-group-title">Tabs &amp; Panes</div>
+          <div class="shortcuts-row"><kbd>Ctrl+T</kbd><span>New tab</span></div>
+          <div class="shortcuts-row"><kbd>Ctrl+W</kbd><span>Close active tab</span></div>
+          <div class="shortcuts-row"><kbd>Ctrl+1–9</kbd><span>Switch to tab N</span></div>
+          <div class="shortcuts-row"><kbd>Ctrl+Shift+T</kbd><span>Split pane</span></div>
+          <div class="shortcuts-row"><kbd>Ctrl+Shift+W</kbd><span>Close focused pane</span></div>
+          <div class="shortcuts-row"><kbd>Ctrl+Tab</kbd><span>Toggle pane focus</span></div>
+        </div>
+
+        <div class="shortcuts-group">
+          <div class="shortcuts-group-title">Clipboard</div>
+          <div class="shortcuts-row"><kbd>Ctrl+Shift+C</kbd><span>Copy selection</span></div>
+          <div class="shortcuts-row"><kbd>Ctrl+Shift+V</kbd><span>Paste</span></div>
+        </div>
+
+        <div class="shortcuts-group">
+          <div class="shortcuts-group-title">Terminal</div>
+          <div class="shortcuts-row"><kbd>Ctrl+F</kbd><span>Search in pane</span></div>
+          <div class="shortcuts-row"><kbd>Ctrl+L</kbd><span>Clear screen</span></div>
+          <div class="shortcuts-row"><kbd>Ctrl+=</kbd><span>Increase font size</span></div>
+          <div class="shortcuts-row"><kbd>Ctrl+–</kbd><span>Decrease font size</span></div>
+        </div>
+
+        <div class="shortcuts-group">
+          <div class="shortcuts-group-title">UI</div>
+          <div class="shortcuts-row"><kbd>Ctrl+P</kbd><span>Command palette</span></div>
+          <div class="shortcuts-row"><kbd>Ctrl+,</kbd><span>Font &amp; shell settings</span></div>
+          <div class="shortcuts-row"><kbd>Ctrl+Shift+B</kbd><span>Toggle broadcast mode</span></div>
+          <div class="shortcuts-row"><kbd>Ctrl+Shift+O</kbd><span>Cycle opacity</span></div>
+          <div class="shortcuts-row"><kbd>Esc</kbd><span>Close modal / palette</span></div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
   <!-- ── Font / shell settings panel ─────────────────────────────────── -->
   <div id="font-settings-overlay" class="hidden">
     <div id="font-settings-modal">

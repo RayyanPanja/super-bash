@@ -284,7 +284,7 @@ async function init() {
     window.electronAPI.closeWindow()
   );
   // #btn-settings click is handled by settings-modal.js (git profiles)
-  document.getElementById('btn-help').addEventListener('click', () => window.electronAPI.openHelp());
+  document.getElementById('btn-help').addEventListener('click', openShortcuts);
   document.getElementById('btn-new-tab').addEventListener('click', () => createTab());
   document.getElementById('btn-broadcast').addEventListener('click', toggleBroadcast);
 
@@ -296,6 +296,7 @@ async function init() {
     syncBtn.style.display = 'none';
   }
 
+  initShortcuts();
   initSettings();
   initPalette();
   initGitBar();
@@ -935,6 +936,12 @@ function handleGlobalKeydown(e) {
     return;
   }
 
+  // ── Shortcuts modal open: Escape closes it ───────────────────────────────────
+  if (!document.getElementById('shortcuts-overlay').classList.contains('hidden')) {
+    if (key === 'Escape') { e.preventDefault(); closeShortcuts(); }
+    return;
+  }
+
   // ── Font settings open: Escape closes it, other shortcuts blocked ───────────
   if (!document.getElementById('font-settings-overlay').classList.contains('hidden')) {
     if (key === 'Escape') { e.preventDefault(); closeSettings(); }
@@ -1432,6 +1439,23 @@ async function executeAndClose(entry) {
       }
     }
   }
+}
+
+// ── Keyboard shortcuts modal ──────────────────────────────────────────────────
+
+function openShortcuts() {
+  document.getElementById('shortcuts-overlay').classList.remove('hidden');
+}
+
+function closeShortcuts() {
+  document.getElementById('shortcuts-overlay').classList.add('hidden');
+}
+
+function initShortcuts() {
+  document.getElementById('shortcuts-close').addEventListener('click', closeShortcuts);
+  document.getElementById('shortcuts-overlay').addEventListener('mousedown', (e) => {
+    if (e.target === document.getElementById('shortcuts-overlay')) closeShortcuts();
+  });
 }
 
 // ── Font / shell settings panel ───────────────────────────────────────────────

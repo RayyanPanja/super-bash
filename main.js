@@ -14,6 +14,7 @@ const fs     = require('fs');
 const { exec } = require('child_process');
 const PtyManager   = require('./shell/ptyManager');
 const ConfigLoader = require('./config/configLoader');
+const GitProfileManager = require('./config/gitProfileManager');
 const { resolveShellPath, expandHome, readTeamSnippets, parseGitStatus } = require('./shell/utils');
 const { autoUpdater } = require('electron-updater');
 
@@ -154,6 +155,19 @@ ipcMain.handle('profile:check', (_event, dirPath) => {
   } catch {
     return null;
   }
+});
+
+// ── IPC: Git profiles ─────────────────────────────────────────────────────────
+
+ipcMain.handle('gitProfile:list', () => GitProfileManager.load());
+
+ipcMain.handle('gitProfile:save', (_event, data) => {
+  GitProfileManager.save(data);
+  return { ok: true };
+});
+
+ipcMain.handle('gitProfile:switch', (_event, { profileId, scope, cwd }) => {
+  return GitProfileManager.switchProfile({ profileId, scope, cwd: resolveShellPath(cwd) });
 });
 
 // ── IPC: Git status ───────────────────────────────────────────────────────────
